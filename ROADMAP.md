@@ -761,6 +761,30 @@ i/lf    w/lf     "启动.command"
 - [x] 发布前检查：compileall 通过 / `doctor` 判定环境可用 / 启动器 DRYRUN 通过
 - [x] 提交 + 推送 + tag v0.2.0 + 建 release（附两个 ASCII 启动器）
 
+**发布踩坑：`gh release create` 的 `文件#别名` 语法不管用。**
+
+v0.1.0 当时的做法是 `gh release create ... "启动.bat#homework-ocr-launch-windows.bat"`，
+这次照抄同样的命令，Release 建出来了，附件名却变成 `default.bat` / `default.command`
+——正是发布说明里自己警告的那个 GitHub 中文名清洗问题。
+
+原因：`#` 后的别名**只对已经存在于仓库/远端的文件生效**（本质是引用远端资源），
+对本地文件是纯上传，上传用的仍是磁盘上的真实文件名。
+
+正确做法是让磁盘上的文件名本身就是 ASCII：
+
+```
+# 先复制成 ASCII 名
+Copy-Item 启动.bat $tmp\homework-ocr-launch-windows.bat
+Copy-Item 启动.command $tmp\homework-ocr-launch-macos.command
+# 再上传（上传后可 --clobber 覆盖）
+gh release upload v0.2.0 $tmp\homework-ocr-launch-windows.bat $tmp\homework-ocr-launch-macos.command --clobber
+```
+
+**下次发布务必先复制成 ASCII 名再上传，并在发布后用 `gh release view --json assets` 核对附件名**，
+不要凭命令「看起来对」就认为附件名对了。这次是发布完查附件才发现的。
+
+发布后已验证：附件字节数 / CRLF 行数 / BOM 与本地完全一致，上传过程没有改动内容。
+
 ---
 
 - [x] 模板驱动的完整流水线（渲染 → 配准 → 差分 → 分组 → OCR → 过滤 → 导出）
