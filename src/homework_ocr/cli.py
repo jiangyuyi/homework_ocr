@@ -495,7 +495,7 @@ def gui_cmd(
         typer.echo("还没有批次，启动后在页面上新建一个。")
     typer.echo("")
     typer.echo(f"界面地址: http://{host}:{settings.port}/")
-    typer.echo("出站网络已封禁，数据不会离开本机。按 Ctrl+C 退出。")
+    typer.echo("出站网络已封禁，数据不会离开本机。关闭窗口或按 Ctrl+C 退出。")
 
     if host not in {"127.0.0.1", "localhost"}:
         log.warning("监听地址是 %s 而非本机，这会让学生数据可被局域网访问。", host)

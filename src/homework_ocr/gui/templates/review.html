@@ -24,6 +24,16 @@
     </p>
   </div>
   {% else %}
+  <div class="panel empty" id="done" style="display:none">
+    <p style="font-size:17px;color:var(--ok);font-weight:600">✓ 全部复核完毕</p>
+    <p class="hint" id="done-stats" style="margin-top:8px"></p>
+    <p class="hint" style="margin-top:16px">
+      <a href="/">&larr; 返回列表，可以导出 Excel 了</a>
+      &nbsp;·&nbsp;
+      <a id="done-all" href="#">再看看全部题目</a>
+    </p>
+  </div>
+  <div id="work">
   {% if show_all %}
   <div class="hint" style="margin-bottom:10px">
     抽查模式：正在显示<b>全部</b>题目。取消勾选「只看未复核」可回到默认过滤。
@@ -89,8 +99,25 @@
           <button class="ok" id="accept">确认无误</button>
           <button class="primary" id="save">保存并下一题</button>
           <button id="reject">判为无效</button>
-          <span class="hint" id="saved" style="margin-left:6px"></span>
         </div>
+        <p id="status" aria-live="polite"></p>
+      </div>
+    </div>
+  </div>
+  </div>
+
+  <!-- 确认弹窗。用页面内弹窗而不是浏览器原生 confirm()：
+       原生那个会整个阻塞页面，样式也不统一，而且没法自动化验证。 -->
+  <div id="dlg" class="modal" style="display:none">
+    <div class="modal-box" style="max-width:480px">
+      <div class="modal-title"><span id="dlg-title">请确认</span></div>
+      <div class="modal-body">
+        <p id="dlg-body" style="white-space:pre-wrap;font-size:14.5px;line-height:1.7"></p>
+      </div>
+      <div class="modal-foot">
+        <span class="hint" id="dlg-hint"></span>
+        <button type="button" id="dlg-no">取消</button>
+        <button type="button" class="primary" id="dlg-yes">确定</button>
       </div>
     </div>
   </div>
@@ -103,11 +130,43 @@ const ALL = {{ items | tojson }};
 const STEM = {{ stem | tojson }};
 let list = ALL.slice();
 let idx = 0;
+// 保存请求在飞的时候禁掉按钮。原来没有这层，用户连点就是几个并发 POST。
+let busy = false;
 
 const $ = (id) => document.getElementById(id);
 const text = $('text'), note = $('note'), shot = $('shot'), orig = $('orig');
+const work = $('work'), done = $('done');
 
 function cur() { return list[idx]; }
+
+// 状态提示自己管自己，render() 不再碰它。
+// 之前 persist() 写完「已保存 ✓」紧接着 render() 就把它清空了，
+// 提示活了 0 毫秒 —— 后端明明存成功了，用户看着跟没点一样。
+function say(msg, kind) {
+  const el = $('status');
+  el.textContent = msg;
+  el.className = kind || '';
+}
+
+function setBusy(on) {
+  busy = on;
+  ['accept', 'save', 'reject', 'prev', 'next'].forEach(id => { $(id).disabled = on; });
+}
+
+const STATUS_CN = {
+  accepted: '已确认无误',
+  corrected: '已人工修正',
+  rejected: '已判为无效',
+  pending: '',
+};
+
+// 后端在 status 缺省时会自己按「改没改」判定，前端照着同一套规则标一下，
+// 免得抽查模式里保存完看不出这题已经定了。
+function autoStatus(value, original) {
+  const v = (value || '').trim();
+  if (v === (original || '').trim()) return 'accepted';
+  return v ? 'corrected' : 'rejected';
+}
 
 function render() {
   const it = cur();
@@ -127,12 +186,11 @@ function render() {
     `题号 <b>${esc(it.question_id)}</b>`,
     `置信度 <b>${(it.confidence * 100).toFixed(1)}%</b>`,
     `检测到手写 <b>${it.detected ? '是' : '否'}</b>`,
-  ].join('');
+  ].concat(STATUS_CN[it.status] ? [`当前 <b>${STATUS_CN[it.status]}</b>`] : []).join('');
 
   const tabs = document.querySelectorAll('.img-tabs button');
   tabs.forEach(t => t.classList.toggle('on', t.dataset.src === 'crop'));
   showSrc('crop');
-  $('saved').textContent = '';
 }
 
 function showSrc(kind) {
@@ -199,62 +257,164 @@ function esc(s) {
 }
 
 async function persist(status, advance) {
+  if (busy) return;
   const it = cur();
   if (!it) return;
-  const r = await fetch(`/api/review/${STEM}`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      page: it.page, question_id: it.question_id,
-      text: text.value, status, note: note.value,
-      original_text: it.original_text, confidence: it.confidence,
-      review_reasons: it.review_reasons,
-    })
-  });
-  if (!r.ok) { $('saved').textContent = '保存失败'; return; }
-  it.status = status; it.text = text.value; it.note = note.value;
-  $('saved').textContent = '已保存 ✓';
-  if (advance) {
-    if (advance === 'remove' && $('only-pending').checked) {
-      list.splice(idx, 1);
-      if (idx >= list.length) idx = list.length - 1;
-    } else {
-      idx = Math.min(idx + 1, list.length - 1);
-    }
-    if (!list.length) { location.href = '/'; return; }
-    render();
+  setBusy(true);
+  say('正在保存…');
+  let r;
+  try {
+    r = await fetch(`/api/review/${STEM}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        page: it.page, question_id: it.question_id,
+        text: text.value, status, note: note.value,
+        original_text: it.original_text, confidence: it.confidence,
+        review_reasons: it.review_reasons,
+      })
+    });
+  } catch (e) {
+    setBusy(false);
+    say('保存失败：连不上本机服务。请确认程序窗口还开着，然后重试。', 'err');
+    return;
   }
+  if (!r.ok) {
+    setBusy(false);
+    let detail = '';
+    try { const j = await r.json(); if (j && j.detail) detail = '：' + j.detail; } catch (_) { /* 非 JSON 响应 */ }
+    say(`保存失败（HTTP ${r.status}）${detail}，请重试`, 'err');
+    return;
+  }
+
+  const wasLast = !$('only-pending').checked && idx + 1 >= list.length;
+  it.status = status || autoStatus(text.value, it.original_text);
+  it.text = text.value;
+  it.note = note.value;
+  setBusy(false);
+
+  if (!advance) { say('已保存 ✓', 'ok'); return; }
+
+  // 三个按钮都是「这题定了」。所以只要定了，就统一把它移出待办，
+  // 原来只有「确认无误」移、「保存并下一题」不移，同一题会再冒出来一次。
+  if ($('only-pending').checked) {
+    list.splice(idx, 1);
+  } else {
+    idx = wasLast ? 0 : idx + 1;
+  }
+  if (!list.length) { showDone(); return; }
+  render();
+  // render() 之后再写提示，才不会被下一题的渲染盖掉。
+  say(wasLast ? '已保存 ✓ 这是最后一道题，已回到第一题' : '已保存 ✓', 'ok');
+}
+
+// 全部处理完时给一块明确的完成面板。
+// 原来是 list 清空就 location.href='/'，用户刚点完就被弹回首页，
+// 保存成功却像页面坏了。
+function showDone() {
+  work.style.display = 'none';
+  done.style.display = '';
+  $('done-stats').textContent = `这次列出的 ${ALL.length} 道题都处理完了。`
+    + '人工修正写在结果目录的 review.json 里，导出 Excel 时以它为准。';
+  $('done-all').href = `/review/${encodeURIComponent(STEM)}?all=1`;
 }
 
 function go(d) {
-  if (!list.length) return;
+  if (!list.length || busy) return;
   idx = (idx + d + list.length) % list.length;
   render();
+  say('');
+}
+
+function doSave() { persist(null, true); }
+
+// 页面内确认框。返回 Promise<boolean>。
+function ask(title, body, yesLabel, hint) {
+  return new Promise((resolve) => {
+    $('dlg-title').textContent = title;
+    $('dlg-body').textContent = body;
+    $('dlg-hint').textContent = hint || '';
+    $('dlg-yes').textContent = yesLabel;
+    $('dlg').style.display = '';
+    const close = (v) => {
+      $('dlg').style.display = 'none';
+      $('dlg-yes').onclick = null;
+      $('dlg-no').onclick = null;
+      $('dlg').onclick = null;
+      resolve(v);
+    };
+    $('dlg-yes').onclick = () => close(true);
+    $('dlg-no').onclick = () => close(false);
+    $('dlg').onclick = (e) => { if (e.target === $('dlg')) close(false); };
+    $('dlg-yes').focus();
+  });
+}
+
+async function doAccept() {
+  const it = cur();
+  if (!it) return;
+  // 「确认无误」＝以机器原文为准。原来它无条件把 text 覆盖回原文，
+  // 用户改过的字会被静默吞掉 —— 这是唯一会丢数据的地方，必须先问一句。
+  // 局部变量别叫 go，会把下面的 go(d) 遮住。
+  if (text.value.trim() && text.value.trim() !== (it.original_text || '').trim()) {
+    const overwrite = await ask(
+      '你改过文字了，要改回原文吗？',
+      '点「确认无误」会把文本框里的修改换回机器识别的原文。\n'
+      + '想保留你改的内容，请改点「保存并下一题」。',
+      '改回原文', '不问了，直接保存我的修改');
+    if (!overwrite) return;
+  }
+  text.value = it.original_text || '';
+  persist('accepted', true);
+}
+
+async function doReject() {
+  if (!cur()) return;
+  const sure = await ask(
+    '确定判为无效？',
+    '这题不计分，最终文本会留空。\n如果是手滑点到的，取消就好，什么都不会变。',
+    '确定判为无效');
+  if (!sure) return;
+  text.value = '';
+  persist('rejected', true);
 }
 
 $('prev').addEventListener('click', () => go(-1));
 $('next').addEventListener('click', () => go(1));
-$('save').addEventListener('click', () => persist(null, true));
-$('accept').addEventListener('click', () => {
-  text.value = orig.textContent === '（机器未识别出任何文本）' ? '' : cur().original_text;
-  persist('accepted', 'remove');
-});
-$('reject').addEventListener('click', () => { text.value = ''; persist('rejected', 'remove'); });
+$('save').addEventListener('click', doSave);
+$('accept').addEventListener('click', doAccept);
+$('reject').addEventListener('click', doReject);
 
 $('only-pending').addEventListener('change', async (e) => {
-  if (!e.target.checked) { list = ALL.slice(); idx = 0; render(); return; }
-  const d = await (await fetch(`/api/review/${STEM}`)).json();
-  list = d.items; idx = 0; render();
+  const box = e.target;
+  if (busy) { box.checked = !box.checked; return; }   // 保存中不改列表，把勾选弹回去
+  say('');
+  if (!e.target.checked) { list = ALL.slice(); idx = 0; work.style.display = ''; done.style.display = 'none'; render(); return; }
+  try {
+    const r = await fetch(`/api/review/${STEM}`);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json();
+    list = d.items; idx = 0;
+    if (!list.length) { showDone(); return; }
+    render();
+  } catch (err) {
+    say('没能刷新待办列表，请重试', 'err');
+  }
 });
 
 document.addEventListener('keydown', (e) => {
-  if (e.target === text || e.target === note) {
-    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); persist(null, true); }
-    if (e.key.toLowerCase() === 's' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); persist('accepted', 'remove'); }
+  // 确认框开着的时候，所有快捷键都让位给它。
+  if ($('dlg').style.display !== 'none') {
+    if (e.key === 'Escape') { e.preventDefault(); $('dlg-no').click(); }
     return;
   }
+  // Ctrl+S / Ctrl+Enter 不管焦点在哪都接管。原来焦点不在文本框时没拦，
+  // 会弹出浏览器自带的「保存网页」框。
+  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); doSave(); return; }
+  if (e.key.toLowerCase() === 's' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); doAccept(); return; }
+  // 左右方向键在文本框里要留给光标移动。
+  if (e.target === text || e.target === note) return;
   if (e.key === 'ArrowLeft') { e.preventDefault(); go(-1); }
   if (e.key === 'ArrowRight') { e.preventDefault(); go(1); }
-  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); persist(null, true); }
 });
 
 render();

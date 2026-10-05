@@ -135,6 +135,113 @@ def clean_text(text: str) -> str:
     return text.strip()
 
 
+def foreign_ink_height(
+    page_gray: np.ndarray,
+    hand_mask: np.ndarray,
+    box: tuple[int, int, int, int],
+    *,
+    ink_threshold: int = 160,
+    line_kernel: int = 200,
+) -> float:
+    """band 内「既不是手写、也不是横格线」的墨量，折算成等效印刷行高（px）。
+
+    这就是「手写以外的东西」的可测量形式：
+      1. 从灰度图取墨，扣掉手写 mask 覆盖的像素 —— 学生的笔画不算
+      2. 再扣掉贯穿整页的长横线 —— 作业本的横格线不算
+      3. 剩下的就是印刷内容（题目、指令、字段名、方格边框）
+
+    折算成「每单位宽度上的墨像素数」是为了**和 band 高度无关**：
+    一个 700px 高、中间只印了两行字的空隙，和一个 45px 高的普通行距，
+    只有这样归一化后才可比。
+    """
+    x0, y0, x1, y1 = box
+    h_img, w_img = page_gray.shape[:2]
+    x0, y0 = max(0, x0), max(0, y0)
+    x1, y1 = min(w_img, x1), min(h_img, y1)
+    if x1 - x0 < 4 or y1 - y0 < 2:
+        return 0.0
+
+    band = page_gray[y0:y1, x0:x1]
+    _, ink = cv2.threshold(band, ink_threshold, 255, cv2.THRESH_BINARY_INV)
+    hand = hand_mask[y0:y1, x0:x1]
+    if hand is not None and hand.size == ink.shape:
+        ink[hand > 0] = 0
+    # 横格线是贯穿整页的细长横线；汉字只有 40~50px 宽，200px 的核只吃横线。
+    lines = cv2.morphologyEx(
+        ink, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_RECT, (line_kernel, 1))
+    )
+    ink = cv2.subtract(ink, lines)
+    return cv2.countNonZero(ink) / float(x1 - x0)
+
+
+def group_text_blocks(
+    items: list[tuple[tuple[int, int, int, int], str]],
+    *,
+    page_gray: np.ndarray | None = None,
+    hand_mask: np.ndarray | None = None,
+    foreign_ink_limit: float = 3.0,
+    hgap_ratio: float = 2.5,
+) -> list[str]:
+    """把按阅读顺序排好的 (bbox, 文本) 分成若干「文字块」，块内直接相连。
+
+    块的定义（用户给的）：**只要中间没有出现手写以外的东西，连续的手写文字
+    就算一块。**
+
+    为什么不能直接拿「区域」当块：区域是按墨迹连通性切的，不是按段落切的。
+    一行手写被横线残影或字距断开就变成两三个区域，一个自然段十几行就变成
+    十几个区域。直接按区域换行会把句子劈成三截。
+
+    判据：
+
+    * 两块之间那段空白里**有没有印刷内容**（`foreign_ink_height`）——
+      有就是「新的一段」，没有就还是同一块
+    * 同一行上水平隔得很开的，是并排的独立字段（班级 / 姓名），也要断开
+      （它们中间隔着印刷的字段名）
+    * 给了 ``page_gray``/``hand_mask`` 就用上面的印刷判据；
+      没给就退回纯几何判据（按垂直间距），保证无图时也能用
+
+    真实作业实测：中间有印刷指令的空隙是 15.7 / 26.0 等效像素，
+    普通行距最大只有 0.34，46 倍余量，默认 3.0 稳稳落在中间。
+    """
+    pairs = [(bb, t) for bb, t in items if t]
+    if len(pairs) <= 1:
+        return [t for _, t in pairs]
+
+    heights = [bb[3] - bb[1] for bb, _ in pairs if bb[3] > bb[1]]
+    unit = float(np.median(heights)) if heights else 1.0
+    hgap_limit = max(1.0, unit * hgap_ratio)
+    vgap_limit = max(1.0, unit * 1.5)   # 仅在拿不到图像时使用的兜底判据
+
+    def breaks(prev: tuple[int, int, int, int], cur: tuple[int, int, int, int]) -> bool:
+        vgap = cur[1] - prev[3]
+        hgap = cur[0] - prev[2]
+        # 水平判据只在「垂直上有重叠」（同一横格行）时才成立。
+        # 下一行的 x 位置和上一行无关，拿它比会误判成换块。
+        if vgap <= 0 and hgap > hgap_limit:
+            return True
+        if vgap <= 0:
+            return False
+        if page_gray is None or hand_mask is None:
+            return vgap > vgap_limit
+        band = (min(prev[0], cur[0]), prev[3], max(prev[2], cur[2]), cur[1])
+        return foreign_ink_height(page_gray, hand_mask, band) > foreign_ink_limit
+
+    blocks: list[list[str]] = [[pairs[0][1]]]
+    prev = pairs[0][0]
+    for bbox, text in pairs[1:]:
+        if breaks(prev, bbox):
+            blocks.append([text])
+            prev = bbox
+        else:
+            blocks[-1].append(text)
+            # 同一行内把右边界推到整行最右，下一段要跟整行的右边界比，
+            # 否则一行切成三段时，第二段会把第三段顶成「新块」。
+            prev = (min(prev[0], bbox[0]), min(prev[1], bbox[1]),
+                    max(prev[2], bbox[2]), max(prev[3], bbox[3]))
+
+    return ["".join(b) for b in blocks]
+
+
 def stitch_lines(lines: list[OcrLine], line_joiner: str = "") -> str:
     """把多行按阅读顺序拼成一段文本。
 

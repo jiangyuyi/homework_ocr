@@ -22,7 +22,14 @@ from .geometry import as_bbox
 from .ocr import create_engine
 from .pdfio import imread_unicode
 from .pipeline import DocumentResult, PageResult, QuestionResult
-from .postprocess import evaluate_review, filter_lines_by_mask, mask_for_region, stitch_lines
+from .postprocess import (
+    evaluate_review,
+    filter_lines_by_mask,
+    group_text_blocks,
+    mask_for_region,
+    sort_reading_order,
+    stitch_lines,
+)
 from .template import Question
 
 log = logging.getLogger(__name__)
@@ -39,10 +46,19 @@ def rerun_from_run_dir(run_dir: Path, cfg: Config, model_root: Path | None = Non
     engine.warmup()
 
     masks: dict[int, "object"] = {}
+    grays: dict[int, "object"] = {}
     for page_data in data.get("pages", []):
         number = int(page_data["page"])
-        mask_path = run_dir / page_data.get("debug_paths", {}).get("mask", "")
+        paths = page_data.get("debug_paths", {})
+        mask_path = run_dir / paths.get("mask", "")
         masks[number] = imread_unicode(mask_path, cv2.IMREAD_GRAYSCALE) if mask_path.exists() else None
+        # 对齐图用来判断「两块之间那段空白里有没有印刷内容」，
+        # 拿不到就退回把所有行连成一整块。
+        aligned_path = run_dir / paths.get("aligned", "")
+        if aligned_path.exists():
+            img = imread_unicode(aligned_path)
+            grays[number] = img if img is not None and img.ndim == 2 else (
+                cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if img is not None else None)
 
     for page_data in data.get("pages", []):
         number = int(page_data["page"])
@@ -75,6 +91,26 @@ def rerun_from_run_dir(run_dir: Path, cfg: Config, model_root: Path | None = Non
                 res = filter_lines_by_mask(res, local_mask, cfg.ocr)
 
             text = stitch_lines(res.lines)
+            # 和主流程保持同一套分块规则，否则换模型重跑会把段落结构弄丢。
+            roi = q.get("processing_area")
+            gray = grays.get(number)
+            blocks: list[str] = []
+            if roi and gray is not None:
+                rx, ry = int(roi[0]), int(roi[1])
+                items: list[tuple[tuple[int, int, int, int], str]] = []
+                for line in sort_reading_order(res.lines):
+                    if line.dropped or not line.text or line.bbox is None:
+                        continue
+                    x1, y1, x2, y2 = line.bbox
+                    items.append((as_bbox((x1 + rx, y1 + ry, x2 + rx, y2 + ry)), line.text))
+                blocks = group_text_blocks(
+                    items,
+                    page_gray=gray,
+                    hand_mask=mask,
+                    foreign_ink_limit=cfg.output.block_foreign_ink_px,
+                    hgap_ratio=cfg.output.block_hgap_ratio,
+                )
+                text = cfg.output.block_joiner.join(blocks)
             confidence = res.confidence
             verdict = evaluate_review(
                 detected_handwriting=q.get("detected_handwriting", True),
@@ -84,6 +120,8 @@ def rerun_from_run_dir(run_dir: Path, cfg: Config, model_root: Path | None = Non
                 cfg=cfg.review,
             )
             q["text"] = text
+            if blocks:
+                q["blocks"] = blocks
             q["confidence"] = round(confidence, 4)
             q["review_required"] = verdict.required
             q["review_reasons"] = verdict.reasons

@@ -43,6 +43,7 @@ from .postprocess import (
     build_absolute_lines,
     evaluate_review,
     filter_lines_by_mask,
+    group_text_blocks,
     mask_for_region,
     stitch_lines,
 )
@@ -289,9 +290,11 @@ class HomeworkPipeline:
                 return out
 
         t0 = time.perf_counter()
+        # 灰度版只用来判断「两块之间那段空白里有没有印刷内容」，整页转一次就够。
+        aligned_gray = aligned if aligned.ndim == 2 else cv2.cvtColor(aligned, cv2.COLOR_BGR2GRAY)
         overlay_items: list[debugviz.RegionDebug] = []
         for q in questions:
-            qr = self._process_question(q, aligned, mask, align, page_number, outdir)
+            qr = self._process_question(q, aligned, aligned_gray, mask, align, page_number, outdir)
             out.questions.append(qr)
             overlay_items.append(
                 debugviz.RegionDebug(
@@ -320,6 +323,7 @@ class HomeworkPipeline:
         self,
         question: Question,
         aligned: np.ndarray,
+        aligned_gray: np.ndarray,
         mask: np.ndarray,
         align: AlignResult,
         page_number: int,
@@ -415,19 +419,30 @@ class HomeworkPipeline:
 
         # 整题拼成一段。
         #
-        # 分隔规则（语文作业通常是多行、多段的）：
-        #   同一区域内的多行  -> 换一行
-        #   不同区域之间      -> 换行 + 空行
-        # 之前所有行直接首尾相连，段落全糊在一起，人根本看不出哪句是哪句。
-        region_texts: list[str] = []
-        for res in batch:
+        # 分隔规则：
+        #   同一文字块内的多行  -> 直接相连（中文不需要空格）
+        #   不同文字块之间      -> 换一行
+        #
+        # 块不是「区域」：区域按墨迹连通性切，一行手写会被断成两三个区域，
+        # 一个自然段就变成十几个区域。直接按区域换行会把句子劈成三截。
+        # 所以按用户给的定义重新归并——「中间只要没出现手写以外的东西，
+        # 连续的手写就算一块」，判据是那段空白里有没有印刷内容。
+        region_texts: list[tuple[tuple[int, int, int, int], str]] = []
+        for region, res in zip(crop_regions, batch):
             text = stitch_lines(res.lines, line_joiner=self.cfg.output.line_joiner)
             if text:
-                region_texts.append(text)
+                region_texts.append((as_bbox(region.bbox), text))
 
-        joined = (self.cfg.output.block_joiner).join(region_texts)
+        blocks = group_text_blocks(
+            region_texts,
+            page_gray=aligned_gray,
+            hand_mask=mask,
+            foreign_ink_limit=self.cfg.output.block_foreign_ink_px,
+            hgap_ratio=self.cfg.output.block_hgap_ratio,
+        )
+        joined = (self.cfg.output.block_joiner).join(blocks)
         qr.text = joined
-        qr.blocks = region_texts
+        qr.blocks = blocks
         qr.answers = answers
         qr.confidence = round(worst_conf if answers else 0.0, 4)
 
@@ -545,14 +560,41 @@ def _debug_lines(qr: QuestionResult) -> list[OcrLine] | None:
     return [OcrLine(text=a.text, confidence=a.confidence, bbox=a.bbox) for a in qr.answers]
 
 
-def iter_pdfs(path: str | Path) -> list[Path]:
-    """收集输入路径下的所有 PDF（文件或目录）。"""
-    p = Path(path)
-    if p.is_file():
-        return [p] if p.suffix.lower() == ".pdf" else []
-    if p.is_dir():
-        return sorted(x for x in p.rglob("*.pdf") if x.is_file())
-    return []
+def iter_pdfs(path: "str | Path | Iterable[str | Path]") -> list[Path]:
+    """收集一个或多个路径下的所有 PDF。
+
+    支持传入**多个**来源，是因为路线 A 之后一个批次的作业可能来自两处：
+    浏览器上传的收件箱 + 用户指定的本机文件夹。
+
+    两处可能存在同名文件（用户既上传了又拷了一份到文件夹），所以按解析后的
+    绝对路径去重——否则同一份作业会被处理两遍，结果目录互相覆盖。
+
+    传单个路径的老用法照旧可用，`homework-ocr run` 走的就是这条路。
+    """
+    if isinstance(path, (str, Path)):
+        sources: list[Path] = [Path(path)]
+    else:
+        sources = [Path(p) for p in path]
+
+    out: list[Path] = []
+    seen: set[str] = set()
+    for p in sources:
+        found: list[Path] = []
+        if p.is_file():
+            found = [p] if p.suffix.lower() == ".pdf" else []
+        elif p.is_dir():
+            found = sorted(x for x in p.rglob("*.pdf") if x.is_file())
+
+        for item in found:
+            try:
+                key = str(item.resolve())
+            except OSError:
+                key = str(item)
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(item)
+    return out
 
 
 def fingerprint_config(cfg: Config) -> str:

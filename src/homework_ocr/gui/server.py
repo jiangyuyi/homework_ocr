@@ -744,6 +744,26 @@ def _collect_results(ctx: GuiContext) -> tuple[list[dict[str, Any]], dict[str, R
     return docs, stores
 
 
+HEALTH_MARKER = "homework_ocr"
+
+
+def _probe_running(port: int, host: str = "127.0.0.1", timeout: float = 1.5) -> dict | None:
+    """问一句「这个端口上是不是已经有一个本程序在跑」。
+
+    已经跑着的时候再双击启动脚本，朴素做法是直接 uvicorn 绑定失败，
+    用户看到的是「启动失败，退出码 3」——完全没提真正的原因。
+    先问一声，就能改成「已经在运行，这就帮你打开界面」。
+    """
+    import urllib.request
+
+    try:
+        with urllib.request.urlopen(f"http://{host}:{port}/healthz", timeout=timeout) as r:
+            data = json.loads(r.read().decode("utf-8", "replace"))
+            return data if data.get("ok") else None
+    except Exception:
+        return None
+
+
 def serve(
     cfg: Config,
     settings: "Settings",
@@ -756,9 +776,44 @@ def serve(
 ) -> None:  # pragma: no cover
     import uvicorn
 
+    # 已经在跑就别再绑一次端口，直接把界面打开就行。
+    if _probe_running(port, host):
+        log.info("检测到端口 %d 上已有本程序在运行，直接打开界面", port)
+        print()
+        print(f"  程序已经在运行了（端口 {port}）。")
+        print(f"  界面地址: http://{host}:{port}/")
+        print("  如果想重新启动，先关掉正在运行的窗口。")
+        print()
+        if open_browser:
+            _open_browser(f"http://{host}:{port}/")
+        return
+
     app = create_app(cfg, settings, batch=batch, output_root=output_root,
                      open_browser=open_browser)
-    uvicorn.run(app, host=host, port=port, log_level="warning")
+    try:
+        uvicorn.run(app, host=host, port=port, log_level="warning")
+    except OSError as exc:
+        # 探测和真正绑定之间存在竞态：可能刚好被别人抢占了端口。
+        if _probe_running(port, host):
+            print()
+            print(f"  程序已经在运行了（端口 {port}）。界面地址: http://{host}:{port}/")
+            print()
+            if open_browser:
+                _open_browser(f"http://{host}:{port}/")
+            return
+        raise OSError(
+            f"端口 {port} 被其它程序占用，且那不是本工具。"
+            f"请换一个端口启动，例如：--port {port + 1}"
+        ) from exc
+
+
+def _open_browser(url: str) -> None:
+    import webbrowser
+
+    try:
+        webbrowser.open(url)
+    except Exception:  # pragma: no cover
+        log.warning("无法自动打开浏览器，请手动访问 %s", url)
 
 
 _ = (BackgroundTasks, DocumentResult, fingerprint_config, ReviewEntry, stitch_lines)

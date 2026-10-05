@@ -27,8 +27,8 @@ set "FIX1="
 set "FIX2="
 set "FIX3="
 
-rem ---- 1/4 找 Python：先试项目自带的 .venv ----
-if not exist ".venv\Scripts\python.exe" goto :scan_path
+rem ---- 1/5 找 Python：先试项目自带的 .venv ----
+if not exist ".venv\Scripts\python.exe" goto :scan_wellknown
 ".venv\Scripts\python.exe" -c "import sys" >nul 2>&1
 if errorlevel 1 goto :broken_venv
 set "PY=.venv\Scripts\python.exe"
@@ -38,7 +38,19 @@ goto :have_python
 set "BROKEN_VENV=1"
 set "PY="
 
-rem ---- 2/4 再依次找 PATH 上的 python / py / python3 ----
+rem ---- 2/5 再扫安装器的固定位置（不依赖 PATH）----
+rem 这一步是为什么重装系统之后还能双击就用：
+rem Python 装完会落在固定目录下，但**已经开着的终端**里 PATH 还是旧的，
+rem 这时 python / py 全都找不到。直接按绝对路径找就绕开了这个问题。
+:scan_wellknown
+if defined PY goto :have_python
+for %%V in (314 313 312 311 310) do if not defined PY call :probe_abs "%LOCALAPPDATA%\Programs\Python\Python%%V\python.exe"
+for %%V in (314 313 312 311 310) do if not defined PY call :probe_abs "%ProgramFiles%\Python%%V\python.exe"
+call :probe_abs "%LOCALAPPDATA%\Programs\Python\Launcher\py.exe"
+call :probe_abs "%WINDIR%\py.exe"
+if defined PY goto :have_python
+
+rem ---- 3/5 最后才扫 PATH 上的 python / py / python3 ----
 :scan_path
 call :try_python python
 if defined PY goto :have_python
@@ -54,7 +66,7 @@ echo   使用 Python：%PY%
 if defined BROKEN_VENV echo   提示：项目自带的 .venv 无法运行，已改用系统 Python。
 echo.
 
-rem ---- 3/4 首次运行先下载模型 ----
+rem ---- 4/5 首次运行先下载模型 ----
 if exist "models" goto :run_gui
 echo   首次运行：需要先下载识别模型（要联网，大约几分钟）。
 echo.
@@ -66,7 +78,7 @@ echo.
 echo   模型已就绪。
 echo.
 
-rem ---- 4/4 启动图形界面 ----
+rem ---- 5/5 启动图形界面 ----
 :run_gui
 if defined HOMEWORK_OCR_DRYRUN goto :dryrun_gui
 "%PY%" -m homework_ocr gui %*
@@ -90,7 +102,7 @@ goto :fatal
 :no_python
 set "REASON=找不到可用的 Python。"
 set "FIX1=请到 https://www.python.org/downloads/ 安装 Python 3.10 或更高版本。"
-set "FIX2=安装时务必勾选 Add Python to PATH，然后重新双击本文件。"
+set "FIX2=安装时务必勾选 Add Python to PATH。"
 if defined SAW_STORE_ALIAS set "FIX3=检测到 Microsoft 应用商店的 python 占位别名，它不是真正的 Python，已自动跳过。"
 goto :fatal
 
@@ -155,6 +167,20 @@ rem ============================================================
 rem 把一行文字追加到日志文件
 :log
 >>"%LOG%" echo %~1
+goto :eof
+
+rem 探测一个按绝对路径给出的 Python；同样跳过商店占位别名
+:probe_abs
+if defined PY goto :eof
+if not exist "%~1" goto :eof
+echo "%~1" | find /i "WindowsApps" >nul 2>&1
+if errorlevel 1 goto :probe_abs_real
+set "SAW_STORE_ALIAS=1"
+goto :eof
+:probe_abs_real
+"%~1" -c "import sys" >nul 2>&1
+if errorlevel 1 goto :eof
+set "PY=%~1"
 goto :eof
 
 rem 探测一个 Python 命令；where 可能返回多个结果，逐个试，

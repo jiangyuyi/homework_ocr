@@ -165,10 +165,18 @@ class OutputConfig:
     save_aligned: bool = True
     save_mask: bool = True
     formats: list[str] = field(default_factory=lambda: ["json", "csv", "txt", "xlsx"])
-    #: 同一区域内的多行之间用什么分隔。语文必须用换行，否则句子会糊成一坨。
-    line_joiner: str = "\n"
-    #: 不同区域（段落/框）之间用什么分隔。空行让段落一眼可辨。
-    block_joiner: str = "\n\n"
+    #: 同一文字块内的多行之间用什么分隔。中文直接相连即可（不需要空格），
+    #: 否则一句会被横格线断成好几行，读起来像被劈开的碎片。
+    line_joiner: str = ""
+    #: 不同文字块（段落/字段）之间用什么分隔。
+    block_joiner: str = "\n"
+    #: 判定「换块」的阈值：两块之间那段空白里，扣掉手写和横格线之后，
+    #: 剩下的印刷墨量（折算成「每单位宽度的等效印刷行高」，px）超过它就换块。
+    #: 实测：中间有印刷指令的空隙是 15.7 / 26.0，普通行距最大 0.34，46 倍余量。
+    block_foreign_ink_px: float = 3.0
+    #: 同一行内水平间距超过这个倍数（中位区域高度的倍数）也算换块。
+    #: 用来把并排的独立字段分开，例如班级「五(1)」和姓名「洪逸欣」。
+    block_hgap_ratio: float = 2.5
     #: debug overlay 的缩放比例，原图太大时看不清框。
     overlay_scale: float = 0.4
     jpeg_quality: int = 88
