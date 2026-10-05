@@ -125,6 +125,9 @@ def rerun_from_run_dir(run_dir: Path, cfg: Config, model_root: Path | None = Non
             q["confidence"] = round(confidence, 4)
             q["review_required"] = verdict.required
             q["review_reasons"] = verdict.reasons
+            # codes 必须一起带走，否则换模型重跑后 result.json 里的原因
+            # 会退化成不可翻译的纯文本。
+            q["review_reason_codes"] = verdict.reason_codes
             q["review_priority"] = verdict.priority
             q["answers"] = [
                 {"text": line.text, "confidence": line.confidence,

@@ -47,6 +47,9 @@ class ReviewEntry:
     confidence: float = 0.0
     #: 复核前机器给出的复核原因
     review_reasons: list[str] = field(default_factory=list)
+    #: 复核原因的语言中立版本（{"code","params"}）。界面/Excel 靠它翻译；
+    #: 旧记录没有这个字段，就直接用 review_reasons 里的原文。
+    review_reason_codes: list[dict[str, Any]] = field(default_factory=list)
 
     @property
     def final_text(self) -> str:
@@ -67,6 +70,8 @@ class ReviewEntry:
             updated_at=str(data.get("updated_at", "")),
             confidence=float(data.get("confidence", 0.0)),
             review_reasons=list(data.get("review_reasons", []) or []),
+            review_reason_codes=[c for c in (data.get("review_reason_codes") or [])
+                                 if isinstance(c, dict) and c.get("code")],
         )
 
 
@@ -113,7 +118,8 @@ class ReviewStore:
         return self._entries.get(make_key(page, question_id))
 
     def ensure(self, page: int, question_id: str, *, original_text: str = "",
-               confidence: float = 0.0, review_reasons: list[str] | None = None) -> ReviewEntry:
+               confidence: float = 0.0, review_reasons: list[str] | None = None,
+               review_reason_codes: list[dict[str, Any]] | None = None) -> ReviewEntry:
         """取现有记录，没有就用机器结果建一条。"""
         key = make_key(page, question_id)
         with self._lock:
@@ -123,6 +129,7 @@ class ReviewStore:
                     original_text=original_text,
                     confidence=confidence,
                     review_reasons=list(review_reasons or []),
+                    review_reason_codes=list(review_reason_codes or []),
                 )
                 self._entries[key] = entry
             return entry
@@ -138,6 +145,7 @@ class ReviewStore:
         original_text: str | None = None,
         confidence: float | None = None,
         review_reasons: list[str] | None = None,
+        review_reason_codes: list[dict[str, Any]] | None = None,
     ) -> ReviewEntry:
         key = make_key(page, question_id)
         with self._lock:
@@ -152,6 +160,8 @@ class ReviewStore:
                 entry.confidence = confidence
             if review_reasons is not None:
                 entry.review_reasons = list(review_reasons)
+            if review_reason_codes is not None:
+                entry.review_reason_codes = list(review_reason_codes)
 
             if corrected_text is not None:
                 entry.corrected_text = corrected_text

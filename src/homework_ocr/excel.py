@@ -24,6 +24,7 @@ from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.worksheet import Worksheet
 
+from .i18n import t
 from .review import ReviewEntry, ReviewStore
 
 log = logging.getLogger(__name__)
@@ -34,12 +35,17 @@ CORRECTED_FILL = PatternFill("solid", fgColor="E2EFDA")
 THIN = Side(style="thin", color="BFBFBF")
 BORDER = Border(left=THIN, right=THIN, top=THIN, bottom=THIN)
 
-STATUS_LABELS = {
-    "pending": "待复核",
-    "accepted": "已确认",
-    "corrected": "已修正",
-    "rejected": "已判无效",
-}
+STATUS_CODES = ("pending", "accepted", "corrected", "rejected")
+
+
+def _reasons(codes: Sequence[dict[str, Any]], fallback: Sequence[str]) -> str:
+    """复核原因：有 code 就翻译，没 code（老数据）就用原文。"""
+    out: list[str] = []
+    for c in codes or ():
+        if isinstance(c, dict) and c.get("code"):
+            params = c.get("params") or {}
+            out.append(t(f"reason.{c['code']}", **params))
+    return " | ".join(out or list(fallback))
 
 
 @dataclass
@@ -53,6 +59,7 @@ class Row:
     confidence: float
     review_required: bool
     review_reasons: list[str]
+    review_reason_codes: list[dict[str, Any]]
     final_text: str
     status: str
     note: str
@@ -111,6 +118,8 @@ def _flatten(
                         confidence=float(q.get("confidence", 0.0)),
                         review_required=need,
                         review_reasons=list(q.get("review_reasons", []) or []),
+                        review_reason_codes=[c for c in (q.get("review_reason_codes") or [])
+                                             if isinstance(c, dict) and c.get("code")],
                         final_text=final_text,
                         status=status,
                         note=note,
@@ -161,21 +170,24 @@ def export_xlsx(
 
     # ---------------- 答题明细 ----------------
     ws = wb.active
-    ws.title = "答题明细"
+    ws.title = t("excel.sheet.detail")
     _style_header(
         ws,
-        ["学生文件", "页", "题号", "题型", "检测到手写", "识别文本", "置信度",
-         "最终文本", "复核状态", "需复核", "复核原因", "人工备注", "墨迹覆盖率"],
+        [t("excel.h.document"), t("excel.h.page"), t("excel.h.qid"), t("excel.h.qtype"),
+         t("excel.h.detected"), t("excel.h.ocr"), t("excel.h.conf"),
+         t("excel.h.final"), t("excel.h.status"), t("excel.h.needs"),
+         t("excel.h.reason"), t("excel.h.note"), t("excel.h.ink")],
         [22, 6, 8, 8, 12, 46, 9, 46, 10, 9, 52, 24, 11],
     )
     for r in rows:
         ws.append([
             r.document, r.page, r.question_id, r.question_type,
-            "是" if r.detected else "否",
+            t("common.yes") if r.detected else t("common.no"),
             r.ocr_text, round(r.confidence, 4), r.final_text,
-            STATUS_LABELS.get(r.status, r.status),
-            "是" if r.review_required else "",
-            " | ".join(r.review_reasons), r.note, round(r.ink_coverage, 5),
+            t(f"excel.st.{r.status}") if r.status in STATUS_CODES + ("auto",) else r.status,
+            t("common.yes") if r.review_required else "",
+            _reasons(r.review_reason_codes, r.review_reasons), r.note,
+            round(r.ink_coverage, 5),
         ])
         row_idx = ws.max_row
         for cell in ws[row_idx]:
@@ -191,20 +203,23 @@ def export_xlsx(
     _autosize_rows(ws, max_lines=4)
 
     # ---------------- 复核队列 ----------------
-    ws2 = wb.create_sheet("复核队列")
+    ws2 = wb.create_sheet(t("excel.sheet.queue"))
     _style_header(
         ws2,
-        ["学生文件", "页", "题号", "识别文本", "置信度", "复核原因", "复核状态", "人工备注"],
+        [t("excel.h.document"), t("excel.h.page"), t("excel.h.qid"), t("excel.h.ocr"),
+         t("excel.h.conf"), t("excel.h.reason"), t("excel.h.status"), t("excel.h.note")],
         [22, 6, 8, 52, 9, 60, 10, 24],
     )
     queue = [r for r in rows if r.review_required and r.status in {"pending", "auto"}]
     queue.sort(key=lambda r: (r.document, r.page, _qnum(r.question_id)))
     if not queue:
-        ws2.append(["", "全部已复核", "", "", "", "", "", ""])
+        ws2.append(["", t("excel.allDone"), "", "", "", "", "", ""])
     for r in queue:
         ws2.append([r.document, r.page, r.question_id, r.ocr_text,
-                    round(r.confidence, 4), " | ".join(r.review_reasons),
-                    STATUS_LABELS.get(r.status, r.status), r.note])
+                    round(r.confidence, 4),
+                    _reasons(r.review_reason_codes, r.review_reasons),
+                    t(f"excel.st.{r.status}") if r.status in STATUS_CODES + ("auto",) else r.status,
+                    r.note])
         row_idx = ws2.max_row
         for cell in ws2[row_idx]:
             cell.alignment = Alignment(vertical="top", wrap_text=True)
@@ -213,10 +228,11 @@ def export_xlsx(
     _autosize_rows(ws2, max_lines=4)
 
     # ---------------- 学生汇总 ----------------
-    ws3 = wb.create_sheet("学生汇总")
+    ws3 = wb.create_sheet(t("excel.sheet.summary"))
     _style_header(
         ws3,
-        ["学生文件", "页数", "配准成功页", "题数", "已作答", "需复核", "耗时(秒)", "状态"],
+        [t("excel.h.document"), t("excel.h.pages"), t("excel.h.aligned"), t("excel.h.total"),
+         t("excel.h.answered"), t("excel.h.needs"), t("excel.h.elapsed"), t("excel.h.docStatus")],
         [24, 8, 12, 8, 9, 9, 11, 12],
     )
     for s in summaries:

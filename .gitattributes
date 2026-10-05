@@ -1,0 +1,27 @@
+# 两个启动器的行尾要求正好相反，必须在仓库层面钉死。
+#
+# 不加这一段的话，git index 里存的是 LF，checkout 时按各人本机的
+# core.autocrlf 决定：Windows 上碰巧拿到 CRLF 能跑，macOS 上拿到 LF
+# 的 .bat 就废了。而这个项目的主要交付物恰恰就是这两个脚本。
+*.bat    text eol=crlf
+*.command text eol=lf
+*.sh     text eol=lf
+
+# 文本文件统一按文本处理，避免各平台静默改写
+*.py    text
+*.html  text
+*.css   text
+*.js    text
+*.json  text
+*.md    text
+*.toml  text
+*.yaml  text
+*.yml   text
+
+# 模型和中间产物是二进制，禁止任何行尾/过滤转换
+models/**     binary
+*.onnx        binary
+*.png         binary
+*.jpg         binary
+*.pdf         binary
+*.xlsx        binary

@@ -135,6 +135,8 @@ class Settings:
     port: int = 8000
     last_template_id: str = ""
     onboarded: bool = False
+    #: 界面语言。空 = 用 i18n.DEFAULT_LANG。存用户目录，跟着这个人走。
+    lang: str = ""
     #: 识别批次列表
     batches: list[Batch] = field(default_factory=list)
     #: 当前选中的批次 id

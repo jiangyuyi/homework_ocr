@@ -24,6 +24,7 @@ import cv2
 import numpy as np
 
 from .config import OcrConfig, ReviewConfig
+from .i18n import t
 from .ocr.base import OcrBatchResult, OcrLine
 from .geometry import bbox_mask, mask_ratio, offset_bbox
 
@@ -37,6 +38,9 @@ _NOISE_CHARS = frozenset({"|", "~", "`", "^"})
 class ReviewVerdict:
     required: bool = False
     reasons: list[str] = field(default_factory=list)
+    #: 语言中立的原因：``[{"code": "low_conf", "params": {...}}, ...]``。
+    #: 界面和 Excel 靠它翻译；``reasons`` 只是按当前语言渲染的快照。
+    reason_codes: list[dict[str, Any]] = field(default_factory=list)
     #: 供人工复核界面排序，数值越大越需要优先看。
     priority: int = 0
 
@@ -275,37 +279,47 @@ def evaluate_review(
     cfg: ReviewConfig,
     crop_mask: np.ndarray | None = None,
 ) -> ReviewVerdict:
-    """决定这个答案是否需要人工复核，并给出可读的 reasons。"""
+    """决定这个答案是否需要人工复核，并给出 reasons。
+
+    reasons 同时给出两种形式：
+      * ``reason_codes`` —— ``{"code": ..., "params": {...}}``，语言中立
+      * ``reasons``      —— 按当前语言渲染好的文本，方便人直接看 result.json
+
+    只存文本的话，界面一换语言就翻不了；只存 code 的话，
+    拿旧 result.json 或肉眼看 json 的人又会看到一堆代号。所以两个都留。
+    """
     reasons: list[str] = []
+    codes: list[dict[str, Any]] = []
     priority = 0
 
+    def add(code: str, **params: Any) -> None:
+        codes.append({"code": code, "params": params})
+        reasons.append(t(f"reason.{code}", **params))
+
     if not detected_handwriting:
-        reasons.append("未在该题区域检测到新增笔迹（学生可能未作答，或笔迹过淡）")
+        add("no_ink")
         priority += 2
 
     if alignment_score < cfg.min_alignment_score:
-        reasons.append(f"页面配准分数偏低（{alignment_score:.2f} < {cfg.min_alignment_score}），差分结果可能不可靠")
+        add("low_alignment", score=f"{alignment_score:.2f}", min=cfg.min_alignment_score)
         priority += 3
 
     if fragments > cfg.max_fragments:
-        reasons.append(f"笔迹碎成 {fragments} 段（阈值 {cfg.max_fragments}），可能被错误切分或字迹过淡")
+        add("shards", n=fragments, max=cfg.max_fragments)
         priority += 1
     if ocr is None:
-        reasons.append("未执行 OCR")
+        add("no_ocr")
         priority += 1
     else:
         kept = ocr.kept
         if not kept:
-            reasons.append("未识别出任何答案文本")
+            add("no_text")
             priority += 3
         else:
             conf = ocr.confidence
             if conf < cfg.min_ocr_confidence:
                 worst = min(kept, key=lambda l: l.confidence)
-                reasons.append(
-                    f"识别置信度偏低（最低 {conf:.2f} < {cfg.min_ocr_confidence}，"
-                    f"出现在 \"{worst.text}\"）"
-                )
+                add("low_conf", conf=f"{conf:.2f}", min=cfg.min_ocr_confidence, text=worst.text)
                 priority += 2
 
         # 只有"识别得很确信、却被 mask 判掉"的行才值得复核。
@@ -317,20 +331,19 @@ def evaluate_review(
         ]
         if suspicious:
             worst = max(suspicious, key=lambda l: l.confidence)
-            reasons.append(
-                f"有 {len(suspicious)} 行识别置信度较高却被判为非手写而丢弃"
-                f"（如 \"{worst.text}\" conf={worst.confidence:.2f}），请确认是否漏掉了真实作答"
-            )
+            add("suspicious_drop", n=len(suspicious), text=worst.text,
+                conf=f"{worst.confidence:.2f}")
             priority += 2
 
     if crop_mask is not None and crop_mask.size:
         # 涂改：墨迹异常浓重，通常是反复涂画。OCR 几乎必然出错。
         ratio = cv2.countNonZero(crop_mask) / float(crop_mask.size)
         if ratio > 0.55:
-            reasons.append("该区域墨迹覆盖率异常高，疑似涂改或大面积涂黑")
+            add("heavy_ink")
             priority += 2
 
-    return ReviewVerdict(required=bool(reasons), reasons=reasons, priority=priority)
+    return ReviewVerdict(required=bool(reasons), reasons=reasons,
+                         reason_codes=codes, priority=priority)
 
 
 def mask_for_region(full_mask: np.ndarray, bbox: tuple[int, int, int, int]) -> np.ndarray:

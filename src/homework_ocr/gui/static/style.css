@@ -162,6 +162,22 @@ kbd {
 #status.err { color: var(--warn); font-weight: 600; }
 button:disabled { opacity: .5; cursor: default; }
 
+/* 语言切换：一排按钮。只有三种语言，直接摆出来比展开下拉少一次点击。 */
+.lang-switch { display: inline-flex; gap: 2px; vertical-align: middle; }
+.lang-btn {
+  font: inherit; font-size: 13px; line-height: 1;
+  padding: 8px 11px; cursor: pointer;
+  background: #fff; color: var(--muted);
+  border: 1px solid var(--border); border-radius: 6px;
+}
+.lang-btn + .lang-btn { margin-left: -1px; }
+.lang-btn:hover { color: var(--text); background: #f5f8fc; }
+.lang-btn.on {
+  background: var(--accent); border-color: var(--accent);
+  color: #fff; font-weight: 600; z-index: 1;
+}
+.lang-btn:focus-visible { outline: 2px solid #b6d4fe; outline-offset: 1px; }
+
 /* ---------- 导入拖放区（路线 A） ---------- */
 .drop {
   border: 2px dashed var(--border); border-radius: 10px; background: #fafbfc;

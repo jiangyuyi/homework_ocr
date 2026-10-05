@@ -79,6 +79,9 @@ class QuestionResult:
     confidence: float = 0.0
     review_required: bool = False
     review_reasons: list[str] = field(default_factory=list)
+    #: 语言中立的原因（见 i18n / postprocess.ReviewVerdict.reason_codes）。
+    #: result.json 里两者都存：界面按 codes 翻译，reasons 是给人直接看的快照。
+    review_reason_codes: list[dict[str, Any]] = field(default_factory=list)
     review_priority: int = 0
     ink_coverage: float = 0.0
     fragments: int = 0       # 碎裂块数（明显偏矮的小碎片），不是行数
@@ -550,6 +553,7 @@ class HomeworkPipeline:
 def _apply_verdict(qr: QuestionResult, verdict: ReviewVerdict) -> None:
     qr.review_required = verdict.required
     qr.review_reasons = verdict.reasons
+    qr.review_reason_codes = verdict.reason_codes
     qr.review_priority = verdict.priority
 
 

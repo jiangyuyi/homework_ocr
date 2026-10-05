@@ -25,6 +25,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from .. import __version__
+from .. import i18n
 from ..browse import list_dir, validate_template_dir
 from ..config import Config
 from ..excel import export_xlsx
@@ -149,7 +150,7 @@ class GuiContext:
 
     def require_ready(self) -> None:
         if not self.ready:
-            raise HTTPException(status_code=409, detail="当前批次还没选好模板或作业文件夹")
+            raise HTTPException(status_code=409, detail=i18n.t("err.not_ready"))
 
     def run_dirs(self) -> list[Path]:
         out = self.output_dir
@@ -174,10 +175,22 @@ def create_app(
         app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
     templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+    # 模板里写 {{ t('nav.run') }}，不用每次都把 lang 传进 render()。
+    # 语言存在 settings 里（跟着这个人走，不是跟浏览器走），
+    # 每次请求从 ctx 现取，切了语言刷新就生效。
+    templates.env.globals["t"] = lambda key, **params: i18n.t(key, **params)
+
+    # 语言下拉三个页面共用一份，行为（切完刷新）也共用。
+    templates.env.globals["lang_switcher"] = lambda: _lang_switcher(i18n.current())
 
     def render(request: Request, name: str, **ctx_extra: Any) -> HTMLResponse:
+        lang = i18n.normalize(ctx.settings.lang)
+        i18n.set_current(lang)
         base = {
             "version": __version__,
+            "lang": lang,
+            # 整份词表随页面下发，页面里的 JS 用同一个 key 体系。
+            "tr": i18n.catalog(lang),
             "template_id": ctx.template.template_id if ctx.template else "",
             "template_dpi": ctx.template.dpi if ctx.template else 0,
             "input_dir": str(ctx.input_dir) if ctx.input_dir else "",
@@ -185,6 +198,22 @@ def create_app(
         }
         base.update(ctx_extra)
         return templates.TemplateResponse(request, name, base)
+
+    @app.middleware("http")
+    async def _pin_lang(request: Request, call_next):
+        # 非模板响应（图片、Excel、JSON）也要把语言钉上，
+        # 否则它们在同一个 ContextVar 里读到的是上一个请求的语言。
+        i18n.set_current(i18n.normalize(ctx.settings.lang))
+        return await call_next(request)
+
+    @app.post("/api/lang")
+    async def set_lang(request: Request):
+        body = await request.json()
+        code = i18n.normalize(str(body.get("lang", "")))
+        ctx.settings.lang = code
+        ctx.settings.save()
+        i18n.set_current(code)
+        return JSONResponse({"ok": True, "lang": code})
 
     # ------------------------------------------------------------ 批处理
     def _worker(pdfs: list[Path]) -> None:
@@ -337,7 +366,7 @@ def create_app(
         ctx.require_ready()
         batch = ctx.batch
         if batch is None:
-            raise HTTPException(status_code=409, detail="没有当前批次")
+            raise HTTPException(status_code=409, detail=i18n.t("err.no_batch"))
 
         form = await request.form()
         files = form.getlist("files") or []
@@ -393,10 +422,10 @@ def create_app(
     def api_inbox_delete(name: str):
         batch = ctx.batch
         if batch is None or not batch.inbox_dir or "/" in name or "\\" in name or ".." in name:
-            raise HTTPException(status_code=400, detail="非法文件名")
+            raise HTTPException(status_code=400, detail=i18n.t("err.bad_filename"))
         target = Path(batch.inbox_dir) / name
         if not is_safe_child(target, Path(batch.inbox_dir)) or not target.exists():
-            raise HTTPException(status_code=404, detail="文件不存在")
+            raise HTTPException(status_code=404, detail=i18n.t("err.not_found"))
         target.unlink()
         return JSONResponse({"ok": True})
 
@@ -530,6 +559,7 @@ def create_app(
             original_text=body.get("original_text"),
             confidence=body.get("confidence"),
             review_reasons=body.get("review_reasons"),
+            review_reason_codes=body.get("review_reason_codes"),
         )
         store.save()
         return JSONResponse({"ok": True, "stats": store.stats()})
@@ -558,19 +588,19 @@ def create_app(
     def image(stem: str, name: str):
         run_dir = _safe_run_dir(ctx, stem)
         if "/" in name or "\\" in name or ".." in name:
-            raise HTTPException(status_code=400, detail="非法文件名")
+            raise HTTPException(status_code=400, detail=i18n.t("err.bad_filename"))
         path = run_dir / name
         if not is_safe_child(path, run_dir) or not path.exists():
-            raise HTTPException(status_code=404, detail="文件不存在")
+            raise HTTPException(status_code=404, detail=i18n.t("err.not_found"))
         if not any(tag in name for tag in IMAGE_ALLOWLIST):
-            raise HTTPException(status_code=403, detail="该文件类型不允许预览")
+            raise HTTPException(status_code=403, detail=i18n.t("err.bad_preview"))
         return FileResponse(str(path))
 
     @app.get("/api/export/xlsx")
     def export():
         docs, stores = _collect_results(ctx)
         if not docs:
-            raise HTTPException(status_code=400, detail="还没有可导出的结果，请先运行批处理")
+            raise HTTPException(status_code=400, detail=i18n.t("err.no_export"))
         path = ctx.output_dir / f"homework_results_{ctx.template.template_id}.xlsx"
         export_xlsx(path, docs, stores)
         return FileResponse(str(path), filename=path.name,
@@ -584,7 +614,7 @@ def create_app(
     @app.get("/api/template.json")
     def template_json():
         if ctx.template is None:
-            raise HTTPException(status_code=409, detail="尚未选择模板")
+            raise HTTPException(status_code=409, detail=i18n.t("err.no_template"))
         return JSONResponse(ctx.template.to_dict())
 
     @app.get("/healthz")
@@ -626,13 +656,41 @@ def _schedule_browser(port: int, ctx: GuiContext) -> None:  # pragma: no cover
 
 def _safe_run_dir(ctx: GuiContext, stem: str) -> Path:
     if "/" in stem or "\\" in stem or ".." in stem:
-        raise HTTPException(status_code=400, detail="非法路径")
+        raise HTTPException(status_code=400, detail=i18n.t("err.bad_path"))
     run_dir = ctx.output_dir / stem
     if not is_safe_child(run_dir, ctx.output_dir):
-        raise HTTPException(status_code=400, detail="非法路径")
+        raise HTTPException(status_code=400, detail=i18n.t("err.bad_path"))
     if not (run_dir / "result.json").exists():
-        raise HTTPException(status_code=404, detail=f"找不到 {stem} 的结果")
+        raise HTTPException(status_code=404, detail=i18n.t("err.no_result", stem=stem))
     return run_dir
+
+
+def _lang_switcher(lang: str) -> str:
+    """语言切换：一排按钮，当前语言高亮。
+
+    没用原生 <select>：只有三种语言，一眼看到三个选项比展开下拉更快，
+    普通老师不用先点开再选。每个按钮用它自己的语言名当中文/英文/日文，
+    不用认识 "English" 这个词也知道该点哪个。
+    """
+    from markupsafe import Markup, escape
+
+    label = escape(i18n.t("lang.label"))
+    btns = "".join(
+        f'<button type="button" class="lang-btn{" on" if code == lang else ""}" '
+        f'data-lang="{escape(code)}" aria-pressed="{"true" if code == lang else "false"}" '
+        f'lang="{escape(code)}">{escape(name)}</button>'
+        for code, name in i18n.LANGS
+    )
+    return Markup(f'<div class="lang-switch" role="group" aria-label="{label}">{btns}</div>')
+
+
+def _reason_texts(codes: Any, fallback: Any) -> list[str]:
+    """复核原因：有 code 就翻译，没 code（老数据）就直接用原文。"""
+    out: list[str] = []
+    for c in codes or ():
+        if isinstance(c, dict) and c.get("code"):
+            out.append(i18n.t(f"reason.{c['code']}", **(c.get("params") or {})))
+    return out or [str(x) for x in (fallback or ())]
 
 
 def _review_items(doc: dict[str, Any], store: ReviewStore, only_pending: bool = True) -> list[dict[str, Any]]:
@@ -659,7 +717,13 @@ def _review_items(doc: dict[str, Any], store: ReviewStore, only_pending: bool = 
                 "detected": bool(q.get("detected_handwriting")),
                 "confidence": float(q.get("confidence", 0.0)),
                 "review_required": need,
-                "review_reasons": list(q.get("review_reasons", []) or []),
+                # 有 code 就按当前语言翻译；老 result.json 只有中文原文，就用原文。
+                "review_reasons": _reason_texts(
+                    q.get("review_reason_codes"), q.get("review_reasons")
+                ),
+                # 存回 review.json 的是 code 不是译文，否则换个语言就固化了。
+                "review_reason_codes": [c for c in (q.get("review_reason_codes") or [])
+                                        if isinstance(c, dict) and c.get("code")],
                 "original_text": q.get("text", "") or "",
                 "text": (entry.final_text if entry and entry.final_text else q.get("text", "") or ""),
                 "status": entry.status if entry else "pending",

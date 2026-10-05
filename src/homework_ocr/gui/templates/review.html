@@ -1,73 +1,74 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="{{ lang }}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>复核 · {{ stem }}</title>
+  <title>{{ t('review.title') }} · {{ stem }}</title>
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
 <header class="top">
-  <h1>人工复核</h1>
+  <h1>{{ t('review.title') }}</h1>
   <span class="meta">{{ stem }}</span>
   <span class="spacer"></span>
-  <a href="/">&larr; 返回列表</a>
+  {{ lang_switcher() }}
+  <a href="/">{{ t('nav.back') }}</a>
 </header>
 
 <main id="main">
   {% if empty %}
   <div class="panel empty">
-    <p><b>没有需要复核的题目。</b></p>
+    <p><b>{{ t('review.empty.title') }}</b></p>
     <p class="hint">
-      本次识别没有触发复核条件（置信度、配准分数、碎裂情况都达标）。<br>
-      仍然建议抽查：点 <a href="/review/{{ stem }}?all=1">查看全部题目</a>。
+      {{ t('review.empty.hint') }}<br>
+      {{ t('review.empty.hint2') }} <a href="/review/{{ stem }}?all=1">{{ t('review.empty.link') }}</a>。
     </p>
   </div>
   {% else %}
   <div class="panel empty" id="done" style="display:none">
-    <p style="font-size:17px;color:var(--ok);font-weight:600">✓ 全部复核完毕</p>
+    <p style="font-size:17px;color:var(--ok);font-weight:600">{{ t('review.done.title') }}</p>
     <p class="hint" id="done-stats" style="margin-top:8px"></p>
     <p class="hint" style="margin-top:16px">
-      <a href="/">&larr; 返回列表，可以导出 Excel 了</a>
+      <a href="/">{{ t('review.done.back') }}</a>
       &nbsp;·&nbsp;
-      <a id="done-all" href="#">再看看全部题目</a>
+      <a id="done-all" href="#">{{ t('review.done.again') }}</a>
     </p>
   </div>
   <div id="work">
   {% if show_all %}
   <div class="hint" style="margin-bottom:10px">
-    抽查模式：正在显示<b>全部</b>题目。取消勾选「只看未复核」可回到默认过滤。
+    {{ t('review.allMode.a') }}<b>{{ t('review.allMode.strong') }}</b>{{ t('review.allMode.b') }}
   </div>
   {% endif %}
   <div class="review-head">
-    <button id="prev">&larr; 上一题</button>
+    <button id="prev">{{ t('review.prev') }}</button>
     <span class="pos" id="pos">1 / {{ items|length }}</span>
-    <button id="next">下一题 &rarr;</button>
+    <button id="next">{{ t('review.next') }}</button>
     <label class="hint" style="margin-left:8px">
-      <input type="checkbox" id="only-pending" {{ 'checked' if not show_all }}> 只看未复核
+      <input type="checkbox" id="only-pending" {{ 'checked' if not show_all }}> {{ t('review.onlyPending') }}
     </label>
     <span class="spacer"></span>
     <span class="hint">
-      <kbd>Ctrl</kbd>+<kbd>Enter</kbd> 保存并下一题 &nbsp;
-      <kbd>Ctrl</kbd>+<kbd>S</kbd> 确认无误
+      <kbd>Ctrl</kbd>+<kbd>Enter</kbd> {{ t('review.kbd.save') }} &nbsp;
+      <kbd>Ctrl</kbd>+<kbd>S</kbd> {{ t('review.kbd.accept') }}
     </span>
   </div>
 
   <div class="split">
     <div class="pane">
       <div class="pane-title">
-        <span>手写区域</span>
+        <span>{{ t('review.pane.area') }}</span>
         <span class="spacer" style="flex:1"></span>
-        <span class="hint">滚轮缩放查看细节</span>
+        <span class="hint">{{ t('review.pane.zoom') }}</span>
       </div>
       <div class="pane-body">
         <div class="img-tabs">
-          <button data-src="crop" class="on">答案</button>
-          <button data-src="mask">手写 mask</button>
-          <button data-src="debug">整页定位</button>
+          <button data-src="crop" class="on">{{ t('review.tab.answer') }}</button>
+          <button data-src="mask">{{ t('review.tab.mask') }}</button>
+          <button data-src="debug">{{ t('review.tab.debug') }}</button>
         </div>
         <div id="img-wrap" style="overflow:auto;max-height:70vh">
-          <img class="shot" id="shot" alt="答案区域">
+          <img class="shot" id="shot" alt="{{ t('review.pane.area') }}">
         </div>
         <p class="hint" id="img-msg" style="display:none;margin:8px 0 0;color:var(--warn)"></p>
         <div class="kv" style="margin-top:10px" id="facts"></div>
@@ -76,29 +77,29 @@
 
     <div class="pane">
       <div class="pane-title">
-        <span>识别与修正</span>
+        <span>{{ t('review.pane.ocr') }}</span>
         <span class="spacer" style="flex:1"></span>
-        <span class="hint">左边图片才是真相，文字只作参考</span>
+        <span class="hint">{{ t('review.pane.truth') }}</span>
       </div>
       <div class="pane-body">
         <div id="why" style="margin-bottom:10px"></div>
 
-        <label class="hint" style="display:block;margin-bottom:4px">机器识别</label>
+        <label class="hint" style="display:block;margin-bottom:4px">{{ t('review.label.machine') }}</label>
         <div id="orig" style="padding:9px 11px;background:#fafbfc;border:1px solid var(--border);
                     border-radius:6px;margin-bottom:12px;white-space:pre-wrap;min-height:24px"></div>
 
-        <label class="hint" style="display:block;margin-bottom:4px">最终文本（人工修正）</label>
-        <textarea id="text" placeholder="在这里改成正确的内容；留空表示判为无效"></textarea>
+        <label class="hint" style="display:block;margin-bottom:4px">{{ t('review.label.final') }}</label>
+        <textarea id="text" placeholder="{{ t('review.text.ph') }}"></textarea>
 
-        <label class="hint" style="display:block;margin:12px 0 4px">备注（可选）</label>
+        <label class="hint" style="display:block;margin:12px 0 4px">{{ t('review.label.note') }}</label>
         <input id="note" style="width:100%;font:inherit;font-size:14px;padding:8px 10px;
                border:1px solid var(--border);border-radius:6px"
-               placeholder="例如：字迹潦草 / 涂改 / 需与老师确认">
+               placeholder="{{ t('review.note.ph') }}">
 
         <div class="actions">
-          <button class="ok" id="accept">确认无误</button>
-          <button class="primary" id="save">保存并下一题</button>
-          <button id="reject">判为无效</button>
+          <button class="ok" id="accept">{{ t('review.accept') }}</button>
+          <button class="primary" id="save">{{ t('review.save') }}</button>
+          <button id="reject">{{ t('review.reject') }}</button>
         </div>
         <p id="status" aria-live="polite"></p>
       </div>
@@ -110,14 +111,14 @@
        原生那个会整个阻塞页面，样式也不统一，而且没法自动化验证。 -->
   <div id="dlg" class="modal" style="display:none">
     <div class="modal-box" style="max-width:480px">
-      <div class="modal-title"><span id="dlg-title">请确认</span></div>
+      <div class="modal-title"><span id="dlg-title">—</span></div>
       <div class="modal-body">
         <p id="dlg-body" style="white-space:pre-wrap;font-size:14.5px;line-height:1.7"></p>
       </div>
       <div class="modal-foot">
         <span class="hint" id="dlg-hint"></span>
-        <button type="button" id="dlg-no">取消</button>
-        <button type="button" class="primary" id="dlg-yes">确定</button>
+        <button type="button" id="dlg-no">{{ t('common.cancel') }}</button>
+        <button type="button" class="primary" id="dlg-yes">—</button>
       </div>
     </div>
   </div>
@@ -128,6 +129,10 @@
 {% if not empty %}
 const ALL = {{ items | tojson }};
 const STEM = {{ stem | tojson }};
+const TR = {{ tr | tojson }};
+const t = (k, p) => (TR[k] == null ? k : TR[k]).replace(/\{(\w+)\}/g,
+  (m, n) => (p && p[n] != null ? p[n] : m));
+
 let list = ALL.slice();
 let idx = 0;
 // 保存请求在飞的时候禁掉按钮。原来没有这层，用户连点就是几个并发 POST。
@@ -148,16 +153,15 @@ function say(msg, kind) {
   el.className = kind || '';
 }
 
-function setBusy(on) {
-  busy = on;
-  ['accept', 'save', 'reject', 'prev', 'next'].forEach(id => { $(id).disabled = on; });
+function setBusy(on_) {
+  busy = on_;
+  ['accept', 'save', 'reject', 'prev', 'next'].forEach(id => { $(id).disabled = on_; });
 }
 
 const STATUS_CN = {
-  accepted: '已确认无误',
-  corrected: '已人工修正',
-  rejected: '已判为无效',
-  pending: '',
+  accepted: () => t('review.fact.current', { v: t('excel.st.accepted') }),
+  corrected: () => t('review.fact.current', { v: t('excel.st.corrected') }),
+  rejected: () => t('review.fact.current', { v: t('excel.st.rejected') }),
 };
 
 // 后端在 status 缺省时会自己按「改没改」判定，前端照着同一套规则标一下，
@@ -174,22 +178,22 @@ function render() {
   $('pos').textContent = `${idx + 1} / ${list.length}`;
   text.value = it.text || '';
   note.value = it.note || '';
-  orig.textContent = it.original_text || '（机器未识别出任何文本）';
+  orig.textContent = it.original_text || t('review.noText');
   orig.style.color = it.original_text ? '' : 'var(--warn)';
 
   $('why').innerHTML = it.review_reasons.length
     ? '<ul class="reasons">' + it.review_reasons.map(r => `<li>${esc(r)}</li>`).join('') + '</ul>'
-    : '<span class="badge ok">未触发复核条件</span>';
+    : `<span class="badge ok">${esc(t('review.why.ok'))}</span>`;
 
   $('facts').innerHTML = [
-    `第 <b>${it.page}</b> 页`,
-    `题号 <b>${esc(it.question_id)}</b>`,
-    `置信度 <b>${(it.confidence * 100).toFixed(1)}%</b>`,
-    `检测到手写 <b>${it.detected ? '是' : '否'}</b>`,
-  ].concat(STATUS_CN[it.status] ? [`当前 <b>${STATUS_CN[it.status]}</b>`] : []).join('');
+    t('review.fact.page', { n: it.page }),
+    t('review.fact.qid', { q: esc(it.question_id) }),
+    t('review.fact.conf', { c: (it.confidence * 100).toFixed(1) }),
+    t('review.fact.detected', { v: it.detected ? t('common.yes') : t('common.no') }),
+  ].concat(STATUS_CN[it.status] ? [STATUS_CN[it.status]()] : []).join('');
 
   const tabs = document.querySelectorAll('.img-tabs button');
-  tabs.forEach(t => t.classList.toggle('on', t.dataset.src === 'crop'));
+  tabs.forEach(tb => tb.classList.toggle('on', tb.dataset.src === 'crop'));
   showSrc('crop');
 }
 
@@ -198,16 +202,14 @@ function showSrc(kind) {
   if (!it) return;
   const url = it[kind + '_url'];
   document.querySelectorAll('.img-tabs button')
-    .forEach(t => t.classList.toggle('on', t.dataset.src === kind));
+    .forEach(tb => tb.classList.toggle('on', tb.dataset.src === kind));
   const msg = $('img-msg');
   msg.style.display = 'none';
   if (!url) {
     shot.removeAttribute('src');
     shot.style.display = 'none';
     // 以前这里只把图藏起来，用户面对空白面板不知道是图没生成还是自己选错了
-    msg.textContent = kind === 'crop'
-      ? '这次识别没有生成答案区域图。请回到首页重新点一次「开始识别」。'
-      : '这次识别没有生成这张中间图。请回到首页重新点一次「开始识别」。';
+    msg.textContent = kind === 'crop' ? t('review.noCrop') : t('review.noImg');
     msg.style.display = '';
     return;
   }
@@ -215,8 +217,7 @@ function showSrc(kind) {
   // 图片取不到时给一句话，而不是留一个裂图图标让人猜
   shot.onerror = () => {
     shot.style.display = 'none';
-    msg.textContent = '图片没能加载出来（结果目录里可能没有这张图）。'
-      + '请回到首页重新点一次「开始识别」重新生成。';
+    msg.textContent = t('review.imgErr');
     msg.style.display = '';
   };
   shot.onload = () => { msg.style.display = 'none'; fitImage(); };
@@ -246,8 +247,8 @@ document.querySelectorAll('.img-tabs button').forEach(b =>
 $('img-wrap').addEventListener('wheel', (e) => {
   if (!shot.src) return;
   e.preventDefault();
-  const cur2 = parseFloat(shot.dataset.zoom || '1');
-  const next = Math.min(8, Math.max(0.5, cur2 * (e.deltaY < 0 ? 1.15 : 1 / 1.15)));
+  const z = parseFloat(shot.dataset.zoom || '1');
+  const next = Math.min(8, Math.max(0.5, z * (e.deltaY < 0 ? 1.15 : 1 / 1.15)));
   shot.dataset.zoom = next;
   shot.style.width = (next * 100) + '%';
 }, { passive: false });
@@ -261,7 +262,7 @@ async function persist(status, advance) {
   const it = cur();
   if (!it) return;
   setBusy(true);
-  say('正在保存…');
+  say(t('review.saving'));
   let r;
   try {
     r = await fetch(`/api/review/${STEM}`, {
@@ -271,18 +272,19 @@ async function persist(status, advance) {
         text: text.value, status, note: note.value,
         original_text: it.original_text, confidence: it.confidence,
         review_reasons: it.review_reasons,
+        review_reason_codes: it.review_reason_codes || [],
       })
     });
   } catch (e) {
     setBusy(false);
-    say('保存失败：连不上本机服务。请确认程序窗口还开着，然后重试。', 'err');
+    say(t('review.saveFailNet'), 'err');
     return;
   }
   if (!r.ok) {
     setBusy(false);
     let detail = '';
     try { const j = await r.json(); if (j && j.detail) detail = '：' + j.detail; } catch (_) { /* 非 JSON 响应 */ }
-    say(`保存失败（HTTP ${r.status}）${detail}，请重试`, 'err');
+    say(t('review.saveFailHttp', { code: r.status, detail }), 'err');
     return;
   }
 
@@ -292,7 +294,7 @@ async function persist(status, advance) {
   it.note = note.value;
   setBusy(false);
 
-  if (!advance) { say('已保存 ✓', 'ok'); return; }
+  if (!advance) { say(t('review.saved'), 'ok'); return; }
 
   // 三个按钮都是「这题定了」。所以只要定了，就统一把它移出待办，
   // 原来只有「确认无误」移、「保存并下一题」不移，同一题会再冒出来一次。
@@ -304,7 +306,7 @@ async function persist(status, advance) {
   if (!list.length) { showDone(); return; }
   render();
   // render() 之后再写提示，才不会被下一题的渲染盖掉。
-  say(wasLast ? '已保存 ✓ 这是最后一道题，已回到第一题' : '已保存 ✓', 'ok');
+  say(wasLast ? t('review.savedLast') : t('review.saved'), 'ok');
 }
 
 // 全部处理完时给一块明确的完成面板。
@@ -313,8 +315,7 @@ async function persist(status, advance) {
 function showDone() {
   work.style.display = 'none';
   done.style.display = '';
-  $('done-stats').textContent = `这次列出的 ${ALL.length} 道题都处理完了。`
-    + '人工修正写在结果目录的 review.json 里，导出 Excel 时以它为准。';
+  $('done-stats').textContent = t('review.done.stats', { n: ALL.length });
   $('done-all').href = `/review/${encodeURIComponent(STEM)}?all=1`;
 }
 
@@ -357,10 +358,8 @@ async function doAccept() {
   // 局部变量别叫 go，会把下面的 go(d) 遮住。
   if (text.value.trim() && text.value.trim() !== (it.original_text || '').trim()) {
     const overwrite = await ask(
-      '你改过文字了，要改回原文吗？',
-      '点「确认无误」会把文本框里的修改换回机器识别的原文。\n'
-      + '想保留你改的内容，请改点「保存并下一题」。',
-      '改回原文', '不问了，直接保存我的修改');
+      t('dlg.overwrite.title'), t('dlg.overwrite.body'),
+      t('dlg.overwrite.yes'), t('dlg.overwrite.hint'));
     if (!overwrite) return;
   }
   text.value = it.original_text || '';
@@ -369,10 +368,7 @@ async function doAccept() {
 
 async function doReject() {
   if (!cur()) return;
-  const sure = await ask(
-    '确定判为无效？',
-    '这题不计分，最终文本会留空。\n如果是手滑点到的，取消就好，什么都不会变。',
-    '确定判为无效');
+  const sure = await ask(t('dlg.reject.title'), t('dlg.reject.body'), t('dlg.reject.yes'));
   if (!sure) return;
   text.value = '';
   persist('rejected', true);
@@ -388,7 +384,12 @@ $('only-pending').addEventListener('change', async (e) => {
   const box = e.target;
   if (busy) { box.checked = !box.checked; return; }   // 保存中不改列表，把勾选弹回去
   say('');
-  if (!e.target.checked) { list = ALL.slice(); idx = 0; work.style.display = ''; done.style.display = 'none'; render(); return; }
+  if (!box.checked) {
+    list = ALL.slice(); idx = 0;
+    work.style.display = ''; done.style.display = 'none';
+    render();
+    return;
+  }
   try {
     const r = await fetch(`/api/review/${STEM}`);
     if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -397,7 +398,7 @@ $('only-pending').addEventListener('change', async (e) => {
     if (!list.length) { showDone(); return; }
     render();
   } catch (err) {
-    say('没能刷新待办列表，请重试', 'err');
+    say(t('dlg.noPending'), 'err');
   }
 });
 
@@ -415,6 +416,17 @@ document.addEventListener('keydown', (e) => {
   if (e.target === text || e.target === note) return;
   if (e.key === 'ArrowLeft') { e.preventDefault(); go(-1); }
   if (e.key === 'ArrowRight') { e.preventDefault(); go(1); }
+});
+
+// ---------------- 语言切换 ----------------
+document.addEventListener('click', async (e) => {
+  const b = e.target.closest('.lang-btn');
+  if (!b || b.classList.contains('on')) return;
+  const r = await fetch('/api/lang', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ lang: b.dataset.lang })
+  });
+  if ((await r.json()).ok) location.reload();
 });
 
 render();

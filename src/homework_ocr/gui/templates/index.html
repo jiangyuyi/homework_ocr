@@ -1,64 +1,59 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="{{ lang }}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>作业手写提取</title>
+  <title>{{ t('app.title') }}</title>
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
 <header class="top">
-  <h1>作业手写提取</h1>
+  <h1>{{ t('app.title') }}</h1>
   <span class="spacer"></span>
-  <span class="hint">全部在本机运行，不上传任何数据</span>
-  <button id="btn-export">导出 Excel</button>
-  <button class="primary" id="btn-run">开始识别</button>
+  <span class="hint">{{ t('app.tagline') }}</span>
+  {{ lang_switcher() }}
+  <button id="btn-export">{{ t('nav.export') }}</button>
+  <button class="primary" id="btn-run">{{ t('nav.run') }}</button>
 </header>
 
 <main>
   <!-- 批次 -->
   <div class="panel">
-    <h2>这次是哪一批作业</h2>
+    <h2>{{ t('home.batch.title') }}</h2>
     <div class="row" style="margin-top:0">
       <select id="batch-select" class="path-input" style="max-width:340px">
         {% for b in batches %}
         <option value="{{ b.id }}" {{ 'selected' if b.active }}>{{ b.name }}</option>
         {% endfor %}
       </select>
-      <button id="btn-new-batch">＋ 新建批次</button>
+      <button id="btn-new-batch">{{ t('home.batch.new') }}</button>
       {% if batches|length > 1 %}
-      <button id="btn-del-batch">删除本批次</button>
+      <button id="btn-del-batch">{{ t('home.batch.delete') }}</button>
       {% endif %}
     </div>
     <div class="kv" style="margin-top:12px">
-      <span>用哪份模板：<b>{{ template_id or '（未选择）' }}</b></span>
-      <span>作业位置：<b>{{ input_dir or '（未选择）' }}</b></span>
-      <span>结果位置：<b>{{ output_dir or '（未选择）' }}</b></span>
+      <span>{{ t('home.batch.tpl') }}<b>{{ template_id or t('common.unset') }}</b></span>
+      <span>{{ t('home.batch.input') }}<b>{{ input_dir or t('common.unset') }}</b></span>
+      <span>{{ t('home.batch.output') }}<b>{{ output_dir or t('common.unset') }}</b></span>
     </div>
     {% if not ready %}
-    <p class="hint" style="color:var(--warn);margin:10px 0 0">
-      ⚠ 当前批次还没选模板，点「新建批次」把模板和作业位置选好。
-    </p>
+    <p class="hint" style="color:var(--warn);margin:10px 0 0">⚠ {{ t('home.batch.notready') }}</p>
     {% else %}
-    <p class="hint" style="margin:10px 0 0">
-      换一批新作业时，点「新建批次」可以给这批单独指定模板——
-      期中、期末、周测的版式不一样，用错模板结果会全错。
-    </p>
+    <p class="hint" style="margin:10px 0 0">{{ t('home.batch.tip') }}</p>
     {% endif %}
   </div>
 
   <!-- 导入作业 -->
   {% if ready %}
   <div class="panel">
-    <h2>加入这批要识别的作业</h2>
+    <h2>{{ t('home.import.title') }}</h2>
     <p class="hint" style="margin-top:0">
-      选几份学生作业的 PDF 加进来即可，<b>不用管它们原来在哪个文件夹</b>——
-      文件内容会传到本机程序里保存和处理，全程不出这台电脑。
+      {{ t('home.import.tip.a') }}<b>{{ t('home.import.tip.strong') }}</b>{{ t('home.import.tip.b') }}
     </p>
     <div class="drop" id="drop">
       <input type="file" id="file-input" accept="application/pdf,.pdf" multiple>
-      <p><b>把 PDF 拖到这里</b>，或 <u>点此选择文件</u></p>
-      <p class="hint">可以一次选多份。已加入 <b id="inbox-count">{{ inbox_count }}</b> 份。</p>
+      <p><b>{{ t('drop.title.strong') }}</b>{{ t('drop.title.mid') }}<u>{{ t('drop.title.link') }}</u></p>
+      <p class="hint">{{ t('drop.count', n=inbox_count) }}</p>
     </div>
     <div id="import-msg" class="hint" style="margin-top:10px"></div>
     <div id="inbox-list" class="inbox" style="margin-top:8px"></div>
@@ -67,30 +62,30 @@
 
   <!-- 进度 -->
   <div class="panel">
-    <h2>识别进度</h2>
+    <h2>{{ t('home.progress.title') }}</h2>
     <div class="kv" style="margin-bottom:8px">
-      <span>状态：<b id="st-state">空闲</b></span>
-      <span>进度：<b id="st-count">0 / 0</b></span>
+      <span>{{ t('home.progress.state') }}<b id="st-state">{{ t('status.idle') }}</b></span>
+      <span>{{ t('home.progress.count') }}<b id="st-count">0 / 0</b></span>
       <span id="st-current"></span>
       <span id="st-failed"></span>
     </div>
     <div class="progress"><div id="st-bar"></div></div>
-    <div class="log" id="st-log">点右上角「开始识别」即可。</div>
+    <div class="log" id="st-log">{{ t('home.progress.hint') }}</div>
   </div>
 
   <!-- 学生 -->
   <div class="panel">
-    <h2>学生作业 <span class="badge muted" id="student-count">{{ students|length }}</span></h2>
+    <h2>{{ t('home.students.title') }} <span class="badge muted" id="student-count">{{ students|length }}</span></h2>
     {% if students %}
     <table>
       <thead>
         <tr>
-          <th>学生文件</th>
-          <th class="num">页数</th>
-          <th class="num">页面是否对齐</th>
-          <th class="num">题数</th>
-          <th class="num">需人工核对</th>
-          <th class="num">已确认</th>
+          <th>{{ t('table.file') }}</th>
+          <th class="num">{{ t('table.pages') }}</th>
+          <th class="num">{{ t('table.aligned') }}</th>
+          <th class="num">{{ t('table.questions') }}</th>
+          <th class="num">{{ t('table.needs') }}</th>
+          <th class="num">{{ t('table.resolved') }}</th>
           <th></th>
         </tr>
       </thead>
@@ -100,7 +95,7 @@
           <td><a href="/review/{{ s.stem }}">{{ s.document }}</a></td>
           <td class="num">{{ s.pages }}</td>
           <td class="num">
-            {% if s.pages_ok == s.pages %}<span class="badge ok">全部对齐</span>
+            {% if s.pages_ok == s.pages %}<span class="badge ok">{{ t('badge.allAligned') }}</span>
             {% else %}<span class="badge warn">{{ s.pages_ok }}/{{ s.pages }}</span>{% endif %}
           </td>
           <td class="num">{{ s.total }}</td>
@@ -110,9 +105,9 @@
           </td>
           <td class="num">{{ s.resolved }}</td>
           <td class="ops">
-            <a href="/review/{{ s.stem }}?all=1">查看 →</a>
+            <a href="/review/{{ s.stem }}?all=1">{{ t('table.view') }}</a>
             {% if s.review %}
-            <a href="#" class="bulk" data-stem="{{ s.stem }}">全部确认</a>
+            <a href="#" class="bulk" data-stem="{{ s.stem }}">{{ t('table.confirmAll') }}</a>
             {% endif %}
           </td>
         </tr>
@@ -120,8 +115,8 @@
       </tbody>
     </table>
     {% else %}
-    <p class="empty">这个批次还没有识别过。<br>
-      作业位置：<code>{{ input_dir or '（未选择）' }}</code></p>
+    <p class="empty">{{ t('home.students.empty') }}<br>
+      {{ t('home.students.empty.at') }}<code>{{ input_dir or t('common.unset') }}</code></p>
     {% endif %}
   </div>
 </main>
@@ -130,40 +125,40 @@
 <div id="modal" class="modal" style="display:none">
   <div class="modal-box">
     <div class="modal-title">
-      <span>新建一批作业</span>
-      <button type="button" id="modal-close">关闭</button>
+      <span>{{ t('modal.batch.title') }}</span>
+      <button type="button" id="modal-close">{{ t('common.close') }}</button>
     </div>
     <div class="modal-body">
-      <label class="hint" for="nb-name">这批作业叫什么？</label>
-      <input id="nb-name" class="path-input" placeholder="例如：期中考试 / 三年级第一单元">
+      <label class="hint" for="nb-name">{{ t('modal.batch.name') }}</label>
+      <input id="nb-name" class="path-input" placeholder="{{ t('modal.batch.name.ph') }}">
 
-      <label class="hint" for="nb-tpl" style="display:block;margin-top:16px">用哪份空白模板？</label>
+      <label class="hint" for="nb-tpl" style="display:block;margin-top:16px">{{ t('modal.batch.tpl') }}</label>
       <select id="nb-tpl" class="path-input"></select>
       <p class="hint" id="nb-tpl-hint" style="margin-top:6px"></p>
 
       <details style="margin-top:10px">
-        <summary class="hint" style="cursor:pointer">没有合适的模板？新建一个 →</summary>
+        <summary class="hint" style="cursor:pointer">{{ t('modal.batch.tpl.new') }}</summary>
         <div style="margin-top:10px">
           <div class="row">
-            <input id="nb-pdf" class="path-input" placeholder="选一份空白作业 PDF">
-            <button type="button" data-pick="nb-pdf" data-mode="file">浏览…</button>
+            <input id="nb-pdf" class="path-input" placeholder="{{ t('modal.batch.pdf.ph') }}">
+            <button type="button" data-pick="nb-pdf" data-mode="file">{{ t('common.browse') }}</button>
           </div>
-          <button type="button" class="primary" id="nb-create" style="margin-top:8px">用这个 PDF 建模板</button>
+          <button type="button" class="primary" id="nb-create" style="margin-top:8px">{{ t('modal.batch.create') }}</button>
           <p class="hint" id="nb-create-msg" style="margin-top:6px"></p>
         </div>
       </details>
 
-      <label class="hint" for="nb-input" style="display:block;margin-top:16px">这批作业放在哪个文件夹？</label>
+      <label class="hint" for="nb-input" style="display:block;margin-top:16px">{{ t('modal.batch.input') }}</label>
       <div class="row">
-        <input id="nb-input" class="path-input" placeholder="把所有这次要识别的 PDF 放进这个文件夹">
-        <button type="button" data-pick="nb-input" data-mode="dir">浏览…</button>
+        <input id="nb-input" class="path-input" placeholder="{{ t('modal.batch.input.ph') }}">
+        <button type="button" data-pick="nb-input" data-mode="dir">{{ t('common.browse') }}</button>
       </div>
 
       <p class="hint" id="nb-msg" style="margin-top:12px"></p>
     </div>
     <div class="modal-foot">
       <span class="hint" id="nb-cur"></span>
-      <button type="button" class="primary" id="nb-ok">创建并开始</button>
+      <button type="button" class="primary" id="nb-ok">{{ t('modal.batch.ok') }}</button>
     </div>
   </div>
 </div>
@@ -172,24 +167,30 @@
 <div id="picker" class="modal" style="display:none">
   <div class="modal-box">
     <div class="modal-title">
-      <span id="pk-title">选择文件夹</span>
-      <button type="button" id="pk-close">关闭</button>
+      <span id="pk-title">{{ t('picker.title.dir') }}</span>
+      <button type="button" id="pk-close">{{ t('common.close') }}</button>
     </div>
     <div class="modal-path">
-      <input id="pk-input" class="path-input" placeholder="也可以直接粘贴完整路径">
-      <button type="button" id="pk-go">前往</button>
+      <input id="pk-input" class="path-input" placeholder="{{ t('picker.path.ph') }}">
+      <button type="button" id="pk-go">{{ t('picker.go') }}</button>
     </div>
     <div class="modal-shortcuts" id="pk-shortcuts"></div>
     <div class="modal-list" id="pk-list"></div>
     <div class="modal-foot">
       <span class="hint" id="pk-cur"></span>
-      <button type="button" class="primary" id="pk-ok">选择</button>
+      <button type="button" class="primary" id="pk-ok">{{ t('picker.ok.dir') }}</button>
     </div>
   </div>
 </div>
 
 <script>
 const $ = (id) => document.getElementById(id);
+
+// 整份词表随页面下发，页面里所有文字都走同一个 key 体系。
+// 缺词时 t() 返回 key 本身，页面上最多显示一个英文标识，不会白屏。
+const TR = {{ tr | tojson }};
+const t = (k, p) => (TR[k] == null ? k : TR[k]).replace(/\{(\w+)\}/g,
+  (m, n) => (p && p[n] != null ? p[n] : m));
 
 // 有几个按钮是按条件渲染的（比如只有 1 个批次时就没有「删除本批次」）。
 // 以前写 $('x').addEventListener(...)，元素一旦不存在就抛
@@ -207,8 +208,7 @@ window.addEventListener('error', (ev) => {
   box.id = 'js-error-box';
   box.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:99;'
     + 'background:#b3261e;color:#fff;padding:10px 14px;font-size:13px;line-height:1.6';
-  box.textContent = '这个页面出了点问题，部分按钮可能用不了：'
-    + (ev.error.message || ev.error) + '（请把这句话告诉协助你的人）';
+  box.textContent = t('js.error', { msg: ev.error.message || ev.error });
   document.body.appendChild(box);
 });
 
@@ -216,6 +216,18 @@ const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, c =>
   ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 let templates = [];
+
+// ---------------- 语言切换 ----------------
+// 三个页面共用同一段行为。服务端把当前语言存进 settings，刷新后整页跟着变。
+document.addEventListener('click', async (e) => {
+  const b = e.target.closest('.lang-btn');
+  if (!b || b.classList.contains('on')) return;
+  const r = await fetch('/api/lang', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ lang: b.dataset.lang })
+  });
+  if ((await r.json()).ok) location.reload();
+});
 
 // ---------------- 导入作业（路线 A） ----------------
 // 浏览器拿不到文件的绝对路径（File 对象里没有 path），所以这里传的是
@@ -237,19 +249,19 @@ async function upload(files) {
   const msg = $('import-msg');
   const pdfs = Array.from(files).filter(f => f.name.toLowerCase().endsWith('.pdf'));
   const others = files.length - pdfs.length;
-  if (!pdfs.length) { msg.innerHTML = '<span style="color:var(--warn)">只接受 PDF 文件。</span>'; return; }
+  if (!pdfs.length) { msg.innerHTML = `<span style="color:var(--warn)">${esc(t('import.onlyPdf'))}</span>`; return; }
 
-  msg.textContent = `正在加入 ${pdfs.length} 份…`;
+  msg.textContent = t('import.adding', { n: pdfs.length });
   const fd = new FormData();
   pdfs.forEach(f => fd.append('files', f, f.name));
   const r = await fetch('/api/import', { method: 'POST', body: fd });
   const d = await r.json();
-  if (!d.ok) { msg.innerHTML = '<span style="color:var(--warn)">' + esc(d.message || '加入失败') + '</span>'; return; }
+  if (!d.ok) { msg.innerHTML = '<span style="color:var(--warn)">' + esc(d.message || t('import.failed')) + '</span>'; return; }
 
   let extra = '';
-  if (d.skipped && d.skipped.length) extra = `　跳过：${d.skipped.join('、')}`;
-  if (others) extra += `　忽略 ${others} 个非 PDF 文件`;
-  msg.innerHTML = `<span style="color:var(--ok)">已加入 ${d.saved.length} 份，本批共 ${d.total} 份。${esc(extra)}</span>`;
+  if (d.skipped && d.skipped.length) extra = t('import.skipped', { names: d.skipped.join('、') });
+  if (others) extra += t('import.ignored', { n: others });
+  msg.innerHTML = `<span style="color:var(--ok)">${esc(t('import.ok', { n: d.saved.length, m: d.total, extra }))}</span>`;
   fileInput.value = '';
   loadInbox();
 }
@@ -260,9 +272,9 @@ async function loadInbox() {
   if (!box) return;
   if (!d.files.length) { box.innerHTML = ''; return; }
   box.innerHTML = d.files.map(f =>
-    `<span class="chip" title="点击移除">${esc(f)} <b data-del="${esc(f)}">×</b></span>`).join('');
+    `<span class="chip" title="${esc(t('inbox.removeTitle'))}">${esc(f)} <b data-del="${esc(f)}">×</b></span>`).join('');
   box.querySelectorAll('[data-del]').forEach(el => el.addEventListener('click', async () => {
-    if (!confirm(`把「${el.dataset.del}」从这批里移除？`)) return;
+    if (!confirm(t('inbox.removeConfirm', { name: el.dataset.del }))) return;
     await fetch('/api/inbox/' + encodeURIComponent(el.dataset.del), { method: 'DELETE' });
     loadInbox();
   }));
@@ -270,8 +282,19 @@ async function loadInbox() {
 if ($('inbox-list')) loadInbox();
 
 // ---------------- 批次 ----------------
-// 批次名允许是中文，所以放进 URL 之前必须编码，否则路径会带上非 ASCII 字符。
+// 批次名允许是非 ASCII，所以放进 URL 之前必须编码。
 const enc = encodeURIComponent;
+
+function fillTemplateOptions(sel) {
+  sel.innerHTML = `<option value="">${esc(t('modal.batch.tpl.none'))}</option>`;
+  templates.forEach(tpl => {
+    const o = document.createElement('option');
+    o.value = tpl.path;
+    o.textContent = t('tpl.item', { id: tpl.id, pages: tpl.pages, q: tpl.questions })
+      + (tpl.has_rois ? '' : t('tpl.unlabeled'));
+    sel.appendChild(o);
+  });
+}
 
 async function switchBatch(id) {
   await fetch(`/api/batches/${enc(id)}/activate`, { method: 'POST' });
@@ -282,22 +305,15 @@ on('batch-select', 'change', (e) => switchBatch(e.target.value));
 
 on('btn-del-batch', 'click', async () => {
   const id = $('batch-select').value;
-  if (!confirm('删除这个批次的设置？\n已经生成的结果文件不会被删除。')) return;
+  if (!confirm(t('batch.deleteConfirm'))) return;
   await fetch('/api/batches/' + enc(id), { method: 'DELETE' });
   location.href = '/';
 });
 
 on('btn-new-batch', 'click', async () => {
-  const sel = $('nb-tpl');
-  sel.innerHTML = '<option value="">— 选择模板 —</option>';
-  templates.forEach(t => {
-    const o = document.createElement('option');
-    o.value = t.path;
-    o.textContent = `${t.id}　${t.pages} 页 / ${t.questions} 题` + (t.has_rois ? '' : '（未标注）');
-    sel.appendChild(o);
-  });
+  fillTemplateOptions($('nb-tpl'));
   if (!templates.length) {
-    $('nb-tpl-hint').textContent = '还没有任何模板，展开下面的「新建一个」，选一份空白作业 PDF。';
+    $('nb-tpl-hint').textContent = t('tpl.none');
   }
   $('nb-msg').textContent = '';
   $('modal').style.display = '';
@@ -308,16 +324,16 @@ on('nb-tpl', 'change', async () => {
   if (!v) { $('nb-tpl-hint').textContent = ''; return; }
   const d = await (await fetch('/api/validate-template?path=' + encodeURIComponent(v))).json();
   $('nb-tpl-hint').textContent = d.ok
-    ? `可用：${d.pages} 页，${d.questions} 个答案区域。` + (d.reason ? ' ' + d.reason : '')
-    : (d.reason || '模板不可用');
+    ? t('tpl.ok', { pages: d.pages, q: d.questions, reason: d.reason || '' })
+    : (d.reason || t('tpl.bad'));
   $('nb-tpl-hint').style.color = d.ok && d.questions ? 'var(--ok)' : 'var(--warn)';
 });
 
 on('nb-create', 'click', async () => {
   const pdf = $('nb-pdf').value.trim();
-  if (!pdf) { $('nb-create-msg').textContent = '先选一份空白作业 PDF。'; $('nb-create-msg').style.color = 'var(--warn)'; return; }
+  if (!pdf) { $('nb-create-msg').textContent = t('create.needPdf'); $('nb-create-msg').style.color = 'var(--warn)'; return; }
   $('nb-create').disabled = true;
-  $('nb-create-msg').textContent = '正在创建…';
+  $('nb-create-msg').textContent = t('create.working');
   const d = await (await fetch('/api/create-template', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ pdf, dpi: 300 })
@@ -327,25 +343,19 @@ on('nb-create', 'click', async () => {
   $('nb-create-msg').textContent = d.message;
   $('nb-create-msg').style.color = 'var(--ok)';
   templates = await (await fetch('/api/templates')).json();
-  const sel = $('nb-tpl');
-  sel.innerHTML = '<option value="">— 选择模板 —</option>';
-  templates.forEach(t => {
-    const o = document.createElement('option');
-    o.value = t.path; o.textContent = `${t.id}　${t.pages} 页 / ${t.questions} 题`;
-    sel.appendChild(o);
-  });
-  sel.value = d.path;
+  fillTemplateOptions($('nb-tpl'));
+  $('nb-tpl').value = d.path;
   $('nb-tpl').dispatchEvent(new Event('change'));
 });
 
 on('nb-ok', 'click', async () => {
   const body = { name: $('nb-name').value.trim(), template: $('nb-tpl').value, input: $('nb-input').value.trim() };
-  if (!body.name) { $('nb-msg').textContent = '给这批作业起个名字。'; $('nb-msg').style.color = 'var(--warn)'; return; }
-  if (!body.template) { $('nb-msg').textContent = '选一份空白模板。'; $('nb-msg').style.color = 'var(--warn)'; return; }
-  if (!body.input) { $('nb-msg').textContent = '选这批作业所在的文件夹。'; $('nb-msg').style.color = 'var(--warn)'; return; }
+  if (!body.name) { $('nb-msg').textContent = t('modal.batch.name'); $('nb-msg').style.color = 'var(--warn)'; return; }
+  if (!body.template) { $('nb-msg').textContent = t('modal.batch.tpl'); $('nb-msg').style.color = 'var(--warn)'; return; }
+  if (!body.input) { $('nb-msg').textContent = t('modal.batch.input'); $('nb-msg').style.color = 'var(--warn)'; return; }
 
   $('nb-ok').disabled = true;
-  $('nb-msg').textContent = '正在创建…';
+  $('nb-msg').textContent = t('create.working');
   const r = await fetch('/api/batches', {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
   });
@@ -363,8 +373,8 @@ let pkTarget = null, pkMode = 'dir', pkCur = '';
 
 async function openPicker(targetId, mode) {
   pkTarget = targetId; pkMode = mode || 'dir'; pkCur = '';
-  $('pk-title').textContent = mode === 'file' ? '选择 PDF 文件' : '选择文件夹';
-  $('pk-ok').textContent = mode === 'file' ? '选择这个文件' : '选择这个文件夹';
+  $('pk-title').textContent = t(mode === 'file' ? 'picker.title.file' : 'picker.title.dir');
+  $('pk-ok').textContent = t(mode === 'file' ? 'picker.ok.file' : 'picker.ok.dir');
   $('picker').style.display = '';
   await loadDir($(targetId).value || '');
 }
@@ -380,7 +390,7 @@ async function loadDir(path) {
   $('pk-input').value = pkCur;
   const dirs = d.dirs || [], files = d.files || [];
   $('pk-cur').textContent = d.error ? ('⚠ ' + d.error)
-    : pkCur + (dirs.length || files.length ? '' : '（空文件夹）');
+    : pkCur + (dirs.length || files.length ? '' : t('picker.emptyFolder'));
 
   $('pk-shortcuts').innerHTML =
     (d.drives || []).map(x => `<button type="button" data-nav="${esc(x.path)}">💽 ${esc(x.name)}</button>`).join('') +
@@ -388,14 +398,14 @@ async function loadDir(path) {
 
   let html = d.parent ? `<div class="modal-item up" data-nav="${esc(d.parent)}">📁 ..</div>` : '';
   html += dirs.map(x =>
-    `<div class="modal-item" data-nav="${esc(x.path)}"><span>📁 ${esc(x.name)}</span>${x.has_template ? '<span class="badge ok">模板</span>' : ''}</div>`
+    `<div class="modal-item" data-nav="${esc(x.path)}"><span>📁 ${esc(x.name)}</span>${x.has_template ? `<span class="badge ok">${esc(t('badge.template'))}</span>` : ''}</div>`
   ).join('');
   html += files.map(x =>
     `<div class="modal-item" data-pick-file="${esc(x.path)}"><span>📄 ${esc(x.name)}</span><span class="badge muted">${esc(fileSize(x.size))}</span></div>`
   ).join('');
   $('pk-list').innerHTML = html ||
-    (wantFiles ? '<div class="hint" style="padding:14px">这里没有 PDF 文件</div>'
-               : '<div class="hint" style="padding:14px">这里没有子文件夹</div>');
+    (wantFiles ? `<div class="hint" style="padding:14px">${esc(t('picker.empty.file'))}</div>`
+               : `<div class="hint" style="padding:14px">${esc(t('picker.empty.dir'))}</div>`);
 }
 
 function fileSize(n) {
@@ -406,9 +416,9 @@ function fileSize(n) {
 // 选文件夹 / 选文件 共用：把路径写回输入框并关掉弹窗
 function applyPick(raw) {
   const v = String(raw || '').trim();
-  if (!v) { $('nb-msg').textContent = '还没选任何东西。'; return; }
+  if (!v) { $('nb-msg').textContent = t('pick.none'); return; }
   if (pkMode === 'file' && !v.toLowerCase().endsWith('.pdf')) {
-    $('nb-msg').textContent = '请选一个 PDF 文件。'; return;
+    $('nb-msg').textContent = t('pick.notPdf'); return;
   }
   $(pkTarget).value = v;
   $('picker').style.display = 'none';
@@ -437,7 +447,7 @@ on('pk-ok', 'click', () => {
 on('btn-run', 'click', async () => {
   const btn = $('btn-run'), log = $('st-log');
   btn.disabled = true;
-  log.textContent = '正在启动…';
+  log.textContent = t('run.starting');
   try {
     const r = await fetch('/api/run', { method: 'POST' });
     // 不能直接 r.json()：服务挂了/报 500 时返回的不是 JSON，
@@ -447,15 +457,14 @@ on('btn-run', 'click', async () => {
     try { d = JSON.parse(raw); } catch (e) { /* 留给下面按原文显示 */ }
     if (!r.ok || !d.ok) {
       const why = d.message || d.detail
-        || ('后台返回 ' + r.status + (raw ? '：' + raw.slice(0, 200) : ''));
-      log.textContent = '无法开始：' + why;
+        || ('HTTP ' + r.status + (raw ? ': ' + raw.slice(0, 200) : ''));
+      log.textContent = t('run.cannotStart', { why });
       btn.disabled = false;
       return;
     }
     poll();
   } catch (e) {
-    log.textContent = '连不上后台服务。请确认启动窗口还开着，'
-      + '然后重新双击「启动.bat」（' + (e && e.message ? e.message : e) + '）';
+    log.textContent = t('run.backendDown', { msg: (e && e.message) ? e.message : e });
     btn.disabled = false;
   }
 });
@@ -470,25 +479,27 @@ function poll() {
     } catch (e) {
       // 服务没了就停下来，别让界面永远卡在"正在识别"
       clearInterval(polling);
-      $('st-state').textContent = '后台已断开';
-      $('st-log').textContent = '后台服务没有响应了。请关掉页面，重新双击「启动.bat」再试。';
+      $('st-state').textContent = t('status.disconnected');
+      $('st-log').textContent = t('run.dead');
       $('btn-run').disabled = false;
       return;
     }
-    $('st-state').textContent = s.running ? '正在识别' : (s.finished_at ? '已完成' : '空闲');
+    $('st-state').textContent = s.running ? t('status.running')
+      : (s.finished_at ? t('status.done') : t('status.idle'));
     $('st-count').textContent = `${s.done} / ${s.total}`;
     // 说清楚在处理谁，而不是只给个数字
-    $('st-current').textContent = s.current ? ('正在处理：' + s.current) : '';
-    $('st-failed').innerHTML = s.failed.length ? `<span class="badge warn">${s.failed.length} 份没成功</span>` : '';
+    $('st-current').textContent = s.current ? t('run.processing', { name: s.current }) : '';
+    $('st-failed').innerHTML = s.failed.length
+      ? `<span class="badge warn">${esc(t('run.failedN', { n: s.failed.length }))}</span>` : '';
     $('st-bar').style.width = s.pct + '%';
     if (s.log.length) $('st-log').textContent = s.log.join('\n');
     if (!s.running) {
       clearInterval(polling);
       $('btn-run').disabled = false;
-      if (s.error) $('st-log').textContent += '\n\n出错了：' + s.error;
+      if (s.error) $('st-log').textContent += '\n\n' + t('run.error', { err: s.error });
       else if (s.done) setTimeout(() => location.reload(), 700);
       else if (!s.log.length) {
-        $('st-log').textContent = '没有可处理的内容。请确认作业文件夹里有 PDF。';
+        $('st-log').textContent = t('run.noContent');
       }
     }
   }, 900);
@@ -499,9 +510,9 @@ on('btn-export', 'click', () => { window.location.href = '/api/export/xlsx'; });
 document.querySelectorAll('a.bulk').forEach(a => a.addEventListener('click', async (e) => {
   e.preventDefault();
   const stem = a.dataset.stem;
-  if (!confirm(`确认把「${stem}」所有需核对的题都标记为已确认？\n仅在人工核对过图片后使用。`)) return;
-  const items = await (await fetch(`/api/review/${stem}`)).json();
-  const r = await fetch(`/api/review/${stem}/bulk`, {
+  if (!confirm(t('bulk.confirm', { stem }))) return;
+  const items = await (await fetch(`/api/review/${enc(stem)}`)).json();
+  const r = await fetch(`/api/review/${enc(stem)}/bulk`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ items: items.items })
   });
