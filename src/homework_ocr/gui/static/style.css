@@ -1,0 +1,235 @@
+/* homework_ocr GUI
+   面向老师日常使用：大字号、高对比、少干扰。 */
+
+:root {
+  --bg: #f6f7f9;
+  --panel: #ffffff;
+  --border: #dfe3e8;
+  --text: #1f2328;
+  --muted: #656d76;
+  --accent: #0969da;
+  --warn: #b7791f;
+  --warn-bg: #fff8e6;
+  --ok: #1a7f37;
+  --ok-bg: #e9f7ee;
+  --edit: #8250df;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei",
+               "PingFang SC", "Hiragino Sans GB", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.6;
+}
+
+header.top {
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  padding: 14px 24px;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+header.top h1 { font-size: 17px; margin: 0; font-weight: 600; white-space: nowrap; }
+header.top .meta { color: var(--muted); font-size: 13px; white-space: nowrap; }
+header.top .spacer { flex: 1; }
+header.top > * { flex: 0 0 auto; }
+
+main { padding: 24px; max-width: 1500px; margin: 0 auto; }
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 18px 20px;
+  margin-bottom: 18px;
+}
+
+.panel h2 { margin: 0 0 12px; font-size: 15px; font-weight: 600; }
+
+button {
+  font: inherit;
+  font-size: 14px;
+  padding: 7px 15px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--text);
+  cursor: pointer;
+}
+button:hover:not(:disabled) { background: #f0f2f5; }
+button:disabled { opacity: .5; cursor: not-allowed; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.primary:hover:not(:disabled) { background: #0860c4; }
+button.ok { border-color: var(--ok); color: var(--ok); }
+button.ok:hover:not(:disabled) { background: var(--ok-bg); }
+
+/* ---------- 表格 ---------- */
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--border); }
+th { color: var(--muted); font-weight: 600; font-size: 12.5px; text-transform: uppercase;
+     letter-spacing: .03em; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+tr.has-review td { background: var(--warn-bg); }
+tr:hover td { background: #eef2f6; }
+
+/* 操作列不换行，否则窄屏下"全部确认"会被压成三行 */
+td.ops { white-space: nowrap; }
+td.ops a { margin-right: 8px; }
+
+.badge {
+  display: inline-block; padding: 1px 8px; border-radius: 10px;
+  font-size: 12px; font-weight: 600; line-height: 1.7;
+}
+.badge.warn { background: var(--warn-bg); color: var(--warn); }
+.badge.ok { background: var(--ok-bg); color: var(--ok); }
+.badge.muted { background: #eef1f4; color: var(--muted); }
+.badge.edit { background: #f3ecff; color: var(--edit); }
+
+/* ---------- 进度 ---------- */
+.progress { height: 8px; background: #e8ebef; border-radius: 4px; overflow: hidden; margin: 10px 0; }
+.progress > div { height: 100%; background: var(--accent); width: 0; transition: width .25s; }
+.log {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px; color: var(--muted); max-height: 190px; overflow: auto;
+  background: #fafbfc; border: 1px solid var(--border); border-radius: 6px; padding: 10px;
+  white-space: pre-wrap;
+}
+
+/* ---------- 复核界面 ---------- */
+.review-head {
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  padding: 10px 14px; background: var(--panel); border: 1px solid var(--border);
+  border-radius: 8px; margin-bottom: 14px;
+}
+.review-head .pos { font-weight: 600; font-size: 15px; }
+.review-head .spacer { flex: 1; }
+
+.split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
+@media (max-width: 1080px) { .split { grid-template-columns: 1fr; } }
+
+.pane { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.pane > .pane-title {
+  padding: 9px 13px; border-bottom: 1px solid var(--border);
+  font-size: 13px; font-weight: 600; color: var(--muted);
+  display: flex; align-items: center; gap: 8px;
+}
+.pane > .pane-body { padding: 13px; }
+
+img.shot {
+  width: 100%; height: auto; display: block; border: 1px solid var(--border);
+  border-radius: 4px; background: #fff;
+}
+.img-tabs { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
+.img-tabs button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+textarea {
+  width: 100%; min-height: 150px; font: inherit; font-size: 15px; line-height: 1.7;
+  padding: 11px; border: 1px solid var(--border); border-radius: 6px; resize: vertical;
+}
+textarea:focus { outline: 2px solid #b6d4fe; border-color: var(--accent); }
+
+.reasons { margin: 0; padding-left: 20px; color: var(--warn); font-size: 13.5px; }
+.reasons li { margin: 2px 0; }
+
+.kv { display: flex; flex-wrap: wrap; gap: 8px 18px; font-size: 13.5px; color: var(--muted); }
+.kv b { color: var(--text); font-weight: 600; }
+
+.actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 12px; }
+.hint { font-size: 12.5px; color: var(--muted); }
+kbd {
+  background: #eef1f4; border: 1px solid var(--border); border-bottom-width: 2px;
+  border-radius: 4px; padding: 0 5px; font-size: 12px; font-family: inherit;
+}
+.empty { text-align: center; padding: 60px 20px; color: var(--muted); }
+
+/* ---------- 导入拖放区（路线 A） ---------- */
+.drop {
+  border: 2px dashed var(--border); border-radius: 10px; background: #fafbfc;
+  padding: 26px 20px; text-align: center; cursor: pointer; transition: .15s;
+}
+.drop:hover, .drop.over { border-color: var(--accent); background: #f0f6ff; }
+.drop p { margin: 4px 0; }
+.drop input[type=file] { display: none; }
+
+.inbox { display: flex; flex-wrap: wrap; gap: 6px; }
+.inbox:empty { display: none; }
+.chip {
+  display: inline-flex; align-items: center; gap: 6px; font-size: 13px;
+  background: #eef1f4; border: 1px solid var(--border); border-radius: 14px;
+  padding: 3px 10px;
+}
+.chip b { cursor: pointer; color: var(--muted); font-weight: 700; }
+.chip b:hover { color: #b42318; }
+
+/* 答案文本里的换行要能看出来 */
+.answer-text { white-space: pre-wrap; }
+
+/* ---------- 引导页 ---------- */
+.step { display: flex; gap: 16px; align-items: flex-start; }
+.step-no {
+  flex: 0 0 30px; width: 30px; height: 30px; border-radius: 50%;
+  background: var(--accent); color: #fff; font-weight: 700;
+  display: flex; align-items: center; justify-content: center; font-size: 15px;
+}
+.step-body { flex: 1; min-width: 0; }
+.step-body h2 { margin-top: 2px; }
+
+.row { display: flex; gap: 8px; align-items: center; margin-top: 6px; }
+.row > .path-input { flex: 1; min-width: 0; }
+
+.path-input, select.path-input {
+  font: inherit; font-size: 14px; padding: 8px 10px;
+  border: 1px solid var(--border); border-radius: 6px; background: #fff;
+  width: 100%; color: var(--text);
+}
+.path-input:focus { outline: 2px solid #b6d4fe; border-color: var(--accent); }
+
+.msg { padding: 10px 13px; border-radius: 6px; margin-bottom: 12px; font-size: 14px; }
+.msg.bad { background: #fdeceb; color: #b42318; }
+.msg.good { background: var(--ok-bg); color: var(--ok); }
+
+/* ---------- 目录浏览器 ---------- */
+.modal {
+  position: fixed; inset: 0; background: rgba(20, 25, 32, .45);
+  display: flex; align-items: center; justify-content: center; z-index: 100; padding: 20px;
+}
+.modal-box {
+  background: #fff; border-radius: 10px; width: 100%; max-width: 680px;
+  max-height: 82vh; display: flex; flex-direction: column; overflow: hidden;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, .25);
+}
+.modal-title, .modal-foot {
+  padding: 12px 16px; display: flex; align-items: center; gap: 12px;
+}
+.modal-title { border-bottom: 1px solid var(--border); font-weight: 600; }
+.modal-title span { flex: 1; }
+.modal-foot { border-top: 1px solid var(--border); }
+.modal-foot .hint { flex: 1; word-break: break-all; }
+.modal-body { padding: 16px; overflow: auto; }
+.modal-body label.hint { display: block; margin-bottom: 5px; }
+.modal-path { padding: 12px 16px 8px; display: flex; gap: 8px; }
+.modal-path .path-input { flex: 1; }
+.modal-shortcuts {
+  padding: 0 16px 8px; display: flex; gap: 6px; flex-wrap: wrap;
+}
+.modal-shortcuts button { font-size: 12.5px; padding: 4px 10px; }
+.modal-list { flex: 1; overflow: auto; padding: 0 8px 8px; min-height: 180px; }
+.modal-item {
+  padding: 8px 10px; border-radius: 6px; cursor: pointer;
+  display: flex; align-items: center; gap: 10px; font-size: 14px;
+}
+.modal-item:hover { background: #eef2f6; }
+.modal-item.up { font-weight: 600; color: var(--muted); }

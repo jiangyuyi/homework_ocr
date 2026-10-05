@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>复核 · {{ stem }}</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="top">
+  <h1>人工复核</h1>
+  <span class="meta">{{ stem }}</span>
+  <span class="spacer"></span>
+  <a href="/">&larr; 返回列表</a>
+</header>
+
+<main id="main">
+  {% if empty %}
+  <div class="panel empty">
+    <p><b>没有需要复核的题目。</b></p>
+    <p class="hint">
+      本次识别没有触发复核条件（置信度、配准分数、碎裂情况都达标）。<br>
+      仍然建议抽查：点 <a href="/review/{{ stem }}?all=1">查看全部题目</a>。
+    </p>
+  </div>
+  {% else %}
+  {% if show_all %}
+  <div class="hint" style="margin-bottom:10px">
+    抽查模式：正在显示<b>全部</b>题目。取消勾选「只看未复核」可回到默认过滤。
+  </div>
+  {% endif %}
+  <div class="review-head">
+    <button id="prev">&larr; 上一题</button>
+    <span class="pos" id="pos">1 / {{ items|length }}</span>
+    <button id="next">下一题 &rarr;</button>
+    <label class="hint" style="margin-left:8px">
+      <input type="checkbox" id="only-pending" {{ 'checked' if not show_all }}> 只看未复核
+    </label>
+    <span class="spacer"></span>
+    <span class="hint">
+      <kbd>Ctrl</kbd>+<kbd>Enter</kbd> 保存并下一题 &nbsp;
+      <kbd>Ctrl</kbd>+<kbd>S</kbd> 确认无误
+    </span>
+  </div>
+
+  <div class="split">
+    <div class="pane">
+      <div class="pane-title">
+        <span>手写区域</span>
+        <span class="spacer" style="flex:1"></span>
+        <span class="hint">滚轮缩放查看细节</span>
+      </div>
+      <div class="pane-body">
+        <div class="img-tabs">
+          <button data-src="crop" class="on">答案</button>
+          <button data-src="mask">手写 mask</button>
+          <button data-src="debug">整页定位</button>
+        </div>
+        <div id="img-wrap" style="overflow:auto;max-height:70vh">
+          <img class="shot" id="shot" alt="答案区域">
+        </div>
+        <p class="hint" id="img-msg" style="display:none;margin:8px 0 0;color:var(--warn)"></p>
+        <div class="kv" style="margin-top:10px" id="facts"></div>
+      </div>
+    </div>
+
+    <div class="pane">
+      <div class="pane-title">
+        <span>识别与修正</span>
+        <span class="spacer" style="flex:1"></span>
+        <span class="hint">左边图片才是真相，文字只作参考</span>
+      </div>
+      <div class="pane-body">
+        <div id="why" style="margin-bottom:10px"></div>
+
+        <label class="hint" style="display:block;margin-bottom:4px">机器识别</label>
+        <div id="orig" style="padding:9px 11px;background:#fafbfc;border:1px solid var(--border);
+                    border-radius:6px;margin-bottom:12px;white-space:pre-wrap;min-height:24px"></div>
+
+        <label class="hint" style="display:block;margin-bottom:4px">最终文本（人工修正）</label>
+        <textarea id="text" placeholder="在这里改成正确的内容；留空表示判为无效"></textarea>
+
+        <label class="hint" style="display:block;margin:12px 0 4px">备注（可选）</label>
+        <input id="note" style="width:100%;font:inherit;font-size:14px;padding:8px 10px;
+               border:1px solid var(--border);border-radius:6px"
+               placeholder="例如：字迹潦草 / 涂改 / 需与老师确认">
+
+        <div class="actions">
+          <button class="ok" id="accept">确认无误</button>
+          <button class="primary" id="save">保存并下一题</button>
+          <button id="reject">判为无效</button>
+          <span class="hint" id="saved" style="margin-left:6px"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+</main>
+
+<script>
+{% if not empty %}
+const ALL = {{ items | tojson }};
+const STEM = {{ stem | tojson }};
+let list = ALL.slice();
+let idx = 0;
+
+const $ = (id) => document.getElementById(id);
+const text = $('text'), note = $('note'), shot = $('shot'), orig = $('orig');
+
+function cur() { return list[idx]; }
+
+function render() {
+  const it = cur();
+  if (!it) return;
+  $('pos').textContent = `${idx + 1} / ${list.length}`;
+  text.value = it.text || '';
+  note.value = it.note || '';
+  orig.textContent = it.original_text || '（机器未识别出任何文本）';
+  orig.style.color = it.original_text ? '' : 'var(--warn)';
+
+  $('why').innerHTML = it.review_reasons.length
+    ? '<ul class="reasons">' + it.review_reasons.map(r => `<li>${esc(r)}</li>`).join('') + '</ul>'
+    : '<span class="badge ok">未触发复核条件</span>';
+
+  $('facts').innerHTML = [
+    `第 <b>${it.page}</b> 页`,
+    `题号 <b>${esc(it.question_id)}</b>`,
+    `置信度 <b>${(it.confidence * 100).toFixed(1)}%</b>`,
+    `检测到手写 <b>${it.detected ? '是' : '否'}</b>`,
+  ].join('');
+
+  const tabs = document.querySelectorAll('.img-tabs button');
+  tabs.forEach(t => t.classList.toggle('on', t.dataset.src === 'crop'));
+  showSrc('crop');
+  $('saved').textContent = '';
+}
+
+function showSrc(kind) {
+  const it = cur();
+  if (!it) return;
+  const url = it[kind + '_url'];
+  document.querySelectorAll('.img-tabs button')
+    .forEach(t => t.classList.toggle('on', t.dataset.src === kind));
+  const msg = $('img-msg');
+  msg.style.display = 'none';
+  if (!url) {
+    shot.removeAttribute('src');
+    shot.style.display = 'none';
+    // 以前这里只把图藏起来，用户面对空白面板不知道是图没生成还是自己选错了
+    msg.textContent = kind === 'crop'
+      ? '这次识别没有生成答案区域图。请回到首页重新点一次「开始识别」。'
+      : '这次识别没有生成这张中间图。请回到首页重新点一次「开始识别」。';
+    msg.style.display = '';
+    return;
+  }
+  shot.style.display = '';
+  // 图片取不到时给一句话，而不是留一个裂图图标让人猜
+  shot.onerror = () => {
+    shot.style.display = 'none';
+    msg.textContent = '图片没能加载出来（结果目录里可能没有这张图）。'
+      + '请回到首页重新点一次「开始识别」重新生成。';
+    msg.style.display = '';
+  };
+  shot.onload = () => { msg.style.display = 'none'; fitImage(); };
+  shot.src = url;
+  $('img-wrap').scrollTop = 0;
+  $('img-wrap').scrollLeft = 0;
+}
+
+// 自动挑一个看得清的初始缩放。
+// k=1 表示"按容器宽度铺满"；答案区如果太扁（细长条），铺满宽度后笔画仍然
+// 太小看不清，就按高度再放大。超过 3 倍开始糊，所以封顶。
+function fitImage() {
+  const natW = shot.naturalWidth || 1;
+  const natH = shot.naturalHeight || 1;
+  const paneW = $('img-wrap').clientWidth || 800;
+  const fillHeight = natH * (paneW / natW);   // 铺满宽度后会有多高
+  let k = fillHeight < 80 ? 80 / fillHeight : 1;
+  k = Math.max(1, Math.min(k, 3));
+  shot.dataset.zoom = k;
+  shot.style.width = (k * 100) + '%';
+}
+
+document.querySelectorAll('.img-tabs button').forEach(b =>
+  b.addEventListener('click', () => showSrc(b.dataset.src)));
+
+// 滚轮缩放看细节
+$('img-wrap').addEventListener('wheel', (e) => {
+  if (!shot.src) return;
+  e.preventDefault();
+  const cur2 = parseFloat(shot.dataset.zoom || '1');
+  const next = Math.min(8, Math.max(0.5, cur2 * (e.deltaY < 0 ? 1.15 : 1 / 1.15)));
+  shot.dataset.zoom = next;
+  shot.style.width = (next * 100) + '%';
+}, { passive: false });
+
+function esc(s) {
+  return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+}
+
+async function persist(status, advance) {
+  const it = cur();
+  if (!it) return;
+  const r = await fetch(`/api/review/${STEM}`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      page: it.page, question_id: it.question_id,
+      text: text.value, status, note: note.value,
+      original_text: it.original_text, confidence: it.confidence,
+      review_reasons: it.review_reasons,
+    })
+  });
+  if (!r.ok) { $('saved').textContent = '保存失败'; return; }
+  it.status = status; it.text = text.value; it.note = note.value;
+  $('saved').textContent = '已保存 ✓';
+  if (advance) {
+    if (advance === 'remove' && $('only-pending').checked) {
+      list.splice(idx, 1);
+      if (idx >= list.length) idx = list.length - 1;
+    } else {
+      idx = Math.min(idx + 1, list.length - 1);
+    }
+    if (!list.length) { location.href = '/'; return; }
+    render();
+  }
+}
+
+function go(d) {
+  if (!list.length) return;
+  idx = (idx + d + list.length) % list.length;
+  render();
+}
+
+$('prev').addEventListener('click', () => go(-1));
+$('next').addEventListener('click', () => go(1));
+$('save').addEventListener('click', () => persist(null, true));
+$('accept').addEventListener('click', () => {
+  text.value = orig.textContent === '（机器未识别出任何文本）' ? '' : cur().original_text;
+  persist('accepted', 'remove');
+});
+$('reject').addEventListener('click', () => { text.value = ''; persist('rejected', 'remove'); });
+
+$('only-pending').addEventListener('change', async (e) => {
+  if (!e.target.checked) { list = ALL.slice(); idx = 0; render(); return; }
+  const d = await (await fetch(`/api/review/${STEM}`)).json();
+  list = d.items; idx = 0; render();
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.target === text || e.target === note) {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); persist(null, true); }
+    if (e.key.toLowerCase() === 's' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); persist('accepted', 'remove'); }
+    return;
+  }
+  if (e.key === 'ArrowLeft') { e.preventDefault(); go(-1); }
+  if (e.key === 'ArrowRight') { e.preventDefault(); go(1); }
+  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); persist(null, true); }
+});
+
+render();
+{% endif %}
+</script>
+</body>
+</html>

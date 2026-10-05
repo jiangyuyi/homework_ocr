@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><title>File API 能力实测</title>
+<style>
+ body{font:14px/1.7 system-ui,"Microsoft YaHei",sans-serif;padding:24px;max-width:900px}
+ pre{background:#f6f7f9;padding:12px;border-radius:6px;white-space:pre-wrap;font-size:13px}
+ .ok{color:#1a7f37}.no{color:#b42318}
+ h2{font-size:15px;margin-top:24px}
+</style></head>
+<body>
+<h1>浏览器 File API 能力实测</h1>
+<p>目的：验证「网页能否拿到用户所选文件的绝对路径」。结论会直接决定要不要做原生界面。</p>
+
+<h2>1. 环境能力检测</h2>
+<pre id="caps">检测中…</pre>
+
+<h2>2. 选一个文件后，看 JS 能读到哪些属性</h2>
+<p><input type="file" id="f"></p>
+<pre id="probe">（还没选文件）</pre>
+
+<h2>3. 文件夹选择</h2>
+<p><input type="file" id="dir" webkitdirectory multiple></p>
+<pre id="dirprobe">（还没选文件夹）</pre>
+
+<script>
+const out = [];
+function has(o, k){ try { return k in o } catch(e){ return false } }
+out.push('showDirectoryPicker      : ' + (has(window,'showDirectoryPicker') ? '可用' : '不可用'));
+out.push('FileSystemDirectoryHandle: ' + (has(window,'FileSystemDirectoryHandle') ? '可用' : '不可用'));
+out.push('FileSystemFileHandle     : ' + (has(window,'FileSystemFileHandle') ? '可用' : '不可用'));
+out.push('navigator.storage.getDirectory (OPFS): ' + (navigator.storage && navigator.storage.getDirectory ? '可用' : '不可用'));
+document.getElementById('caps').textContent = out.join('\n');
+
+function probeFile(f) {
+  if (!f) return;
+  const keys = [];
+  for (const k in f) keys.push(k);
+  const r = [];
+  r.push('文件名        : ' + f.name);
+  r.push('大小          : ' + f.size + ' 字节');
+  r.push('类型          : ' + f.type);
+  r.push('lastModified  : ' + f.lastModified);
+  r.push('---');
+  r.push('f.path                 : ' + ('path' in f ? f.path : '❌ 不存在（没有这个属性）'));
+  r.push('f.webkitRelativePath   : ' + ('webkitRelativePath' in f ? JSON.stringify(f.webkitRelativePath) : '❌ 不存在'));
+  r.push('可直接枚举到的属性     : ' + (keys.length ? keys.join(', ') : '（无）'));
+  r.push('---');
+  r.push('结论：网页能拿到文件名和内容，' + (('path' in f) ? '也能拿到路径' : '但拿不到磁盘路径'));
+  document.getElementById('probe').textContent = r.join('\n');
+}
+document.getElementById('f').addEventListener('change', e => probeFile(e.target.files[0]));
+
+document.getElementById('dir').addEventListener('change', e => {
+  const fs = e.target.files;
+  const r = ['选中 ' + fs.length + ' 个文件'];
+  let rel = 0, path = 0;
+  for (const f of fs) { if (f.webkitRelativePath) rel++; if ('path' in f) path++; }
+  r.push('有 webkitRelativePath 的: ' + rel + ' / ' + fs.length);
+  r.push('有 path 的              : ' + path + ' / ' + fs.length);
+  r.push('示例 webkitRelativePath : ' + (fs[0] ? JSON.stringify(fs[0].webkitRelativePath) : ''));
+  r.push('---');
+  r.push('webkitRelativePath 只含「所选文件夹名/子目录/文件名」，没有盘符和上级目录。');
+  document.getElementById('dirprobe').textContent = r.join('\n');
+});
+</script>
+</body></html>

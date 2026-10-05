@@ -1,0 +1,94 @@
+# homework_ocr 配置
+#
+# 调参只改这个文件，不改代码。
+# 每个参数的取舍理由见行内注释；不确定的先别动，跑一遍看 debug 图再调。
+
+render:
+  dpi: 300              # 模板与学生 PDF 必须用同一 DPI，否则 ROI 坐标全错。
+  grayscale: true
+
+alignment:
+  enabled: true
+  orb_features: 5000
+  ratio_test: 0.75      # 调小 -> 更严格（误匹配少、好匹配也少）
+  ransac_threshold: 3.0 # 300 DPI 下约 0.25mm
+  min_matches: 40
+  min_inliers: 30
+  min_inlier_ratio: 0.5 # 低于此值判定配准失败
+  enable_ecc: true      # 二次精配准，显著减少差分鬼影。慢一点但值得。
+  ecc_iterations: 100
+  ecc_epsilon: 1.0e-5
+  try_rotations: true   # 学生整页旋转 90/180/270 时自动纠正
+  identity_tolerance: 2.0
+  probe_features: 1200
+  probe_min_matches: 12
+
+difference:
+  # template_subtract = 手写 = student AND NOT template（业务语义正确）
+  # absdiff           = |student - template|（仅排查问题时对照用）
+  # none              = 不差分，整页直接 OCR
+  method: template_subtract
+  illumination: true          # 先除掉背景光照，抵消阴影/纸张偏色
+  illumination_kernel: 51
+  adaptive_block_size: 31
+  adaptive_c: 15              # 调大 -> 阈值更保守（墨迹更少）；调小 -> 更多细节
+  # 模板抑制的膨胀半径。学生笔画压在横线上时，过大会啃掉笔画。
+  # 默认 1 像素：宁可留一点鬼影，也不要吃掉真实笔画。
+  template_dilate_px: 1
+
+roi:
+  padding: 20           # ROI 外扩像素（300 DPI）。学生会写到框线外面
+  allow_full_page: true # 模板没标 ROI 时退化为整页处理
+
+noise_filter:
+  min_component_area: 8     # 300 DPI。别调太大：小数点/句号/"i"的点很小
+  max_component_area_ratio: 0.35
+  open_kernel: 2            # 去掉孤立噪点
+  close_kernel: 3           # 补断笔
+  max_aspect_ratio: 40.0    # 细长残留（作业本横线）
+
+grouping:
+  dilation_width: 20   # 水平膨胀把同一行的字粘成一块
+  dilation_height: 5
+  line_gap_ratio: 0.9  # 行间距 > 中位行高×该值 时切分行
+  tall_region_ratio: 2.2 # 块高 > 中位行高×该值 时按投影再切
+
+ocr:
+  engine: rapidocr       # rapidocr | paddleocr
+  det_ocr_version: PP-OCRv5
+  rec_ocr_version: PP-OCRv5
+  lang: ch               # 简中+英+日+拼音，正合语文作业
+  model_type: server     # server 更准，mobile 更快
+  device: cpu
+  threads: 0             # 0 = 由 onnxruntime 自行决定
+  det_limit_side_len: 1536
+  use_det: true          # false = V2：我们已切好行，只做识别
+  min_box_overlap: 0.15  # OCR 行与手写 mask 的最低重叠比例。
+                         # 这是过滤"印刷内容残留"的关键旋钮：
+                         # 调高 -> 更干净但可能漏掉真实作答；调低 -> 会混进印刷文字
+  min_det_score: 0.3
+  rec_batch: 6
+  max_rec_side: 3200
+
+review:
+  min_ocr_confidence: 0.75
+  min_alignment_score: 0.7
+  max_fragments: 6
+  heavy_correction_ratio: 3.0
+
+offline:
+  enforce: true      # 封禁出站 socket。把"不联云"变成可验证的事实
+  allow_loopback: true
+
+output:
+  save_debug: true
+  save_crops: true   # 必须开：换模型时靠这些 crop 重跑，不用重跑前面
+  save_aligned: true
+  save_mask: true
+  formats: [json, csv, txt, xlsx]
+  overlay_scale: 0.4
+  jpeg_quality: 88
+
+run:
+  workers: 1
+  continue_on_error: true

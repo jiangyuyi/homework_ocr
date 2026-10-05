@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>开始使用 · 作业手写提取</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="top">
+  <h1>作业手写提取</h1>
+  <span class="spacer"></span>
+  <span class="hint">全部在本机运行，不上传任何数据</span>
+</header>
+
+<main style="max-width: 860px">
+  <div class="panel">
+    <h2>第一次使用，先做三步设置</h2>
+    <p class="hint" style="margin-top:0">
+      设置会保存在本机，之后每次启动直接就能用。
+    </p>
+  </div>
+
+  <!-- 步骤 1 -->
+  <div class="panel step">
+    <div class="step-no">1</div>
+    <div class="step-body">
+      <h2>选择空白模板</h2>
+      <p class="hint">
+        就是那份<b>学生还没写字之前的空白作业</b>。程序靠它区分「印刷的题目」和「学生写的字」。
+      </p>
+
+      <div id="tpl-existing">
+        <label class="hint" for="tpl-select">已找到的模板：</label>
+        <select id="tpl-select" class="path-input"></select>
+        <p class="hint" id="tpl-hint" style="margin-top:6px"></p>
+      </div>
+
+      <details id="tpl-new" style="margin-top:10px">
+        <summary class="hint" style="cursor:pointer">没有模板？从空白 PDF 新建一个 →</summary>
+        <div style="margin-top:10px">
+          <label class="hint" for="new-pdf">空白模板 PDF：</label>
+          <div class="row">
+            <input id="new-pdf" class="path-input" placeholder="点「浏览…」选一个 PDF">
+            <button type="button" data-pick="new-pdf" data-mode="file">浏览…</button>
+          </div>
+          <label class="hint" for="new-dpi" style="display:block;margin-top:10px">扫描分辨率：</label>
+          <select id="new-dpi" class="path-input" style="max-width:220px">
+            <option value="200">200 DPI（较快）</option>
+            <option value="300" selected>300 DPI（推荐）</option>
+            <option value="400">400 DPI（更清晰，更慢）</option>
+            <option value="600">600 DPI（很慢，一般不需要）</option>
+          </select>
+          <p class="hint" style="margin-top:6px">
+            不知道选哪个就保持 300。<b>选错了后面也能改</b>，但改了必须重新标注答案区域。
+          </p>
+          <button type="button" class="primary" id="btn-create" style="margin-top:10px">用这个 PDF 创建模板</button>
+          <p class="hint" id="create-msg" style="margin-top:8px"></p>
+        </div>
+      </details>
+    </div>
+  </div>
+
+  <!-- 步骤 2 -->
+  <div class="panel step">
+    <div class="step-no">2</div>
+    <div class="step-body">
+      <h2>选择学生作业文件夹</h2>
+      <p class="hint">把所有学生作业的 PDF 放进同一个文件夹，然后选这个文件夹。</p>
+      <div class="row">
+        <input id="input-dir" class="path-input" placeholder="例如 D:\我的文档\三年级作业"
+               value="{{ saved.input_dir }}">
+        <button type="button" data-pick="input-dir" data-mode="dir">浏览…</button>
+      </div>
+      <p class="hint" id="input-msg" style="margin-top:6px"></p>
+    </div>
+  </div>
+
+  <!-- 步骤 3 -->
+  <div class="panel step">
+    <div class="step-no">3</div>
+    <div class="step-body">
+      <h2>结果保存到哪里</h2>
+      <p class="hint">留空会自动放在作业文件夹旁边，名字叫「识别结果」。</p>
+      <div class="row">
+        <input id="output-dir" class="path-input" placeholder="自动决定" value="{{ saved.output_dir }}">
+        <button type="button" data-pick="output-dir" data-mode="dir">浏览…</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div id="msg" class="msg" style="display:none"></div>
+    <div class="actions" style="margin-top:0">
+      <button class="primary" id="btn-finish" style="font-size:15px;padding:10px 26px">开始使用</button>
+      <span class="hint" id="finish-msg"></span>
+    </div>
+  </div>
+</main>
+
+<!-- 服务端目录浏览器 -->
+<div id="modal" class="modal" style="display:none">
+  <div class="modal-box">
+    <div class="modal-title">
+      <span id="modal-title">选择文件夹</span>
+      <button type="button" id="modal-close">关闭</button>
+    </div>
+    <div class="modal-path">
+      <input id="modal-input" class="path-input" placeholder="也可以直接粘贴完整路径">
+      <button type="button" id="modal-go">前往</button>
+    </div>
+    <div class="modal-shortcuts" id="modal-shortcuts"></div>
+    <div class="modal-list" id="modal-list"></div>
+    <div class="modal-foot">
+      <span class="hint" id="modal-cur"></span>
+      <button type="button" class="primary" id="modal-pick">选择这个文件夹</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const SAVED = {{ saved | tojson }};
+let templates = {{ templates | tojson }};
+let current = '';       // 目录浏览器当前路径
+let picking = null;     // 正在为哪个输入框选
+let pickMode = 'dir';   // 'dir' | 'file'
+
+const $ = (id) => document.getElementById(id);
+
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"]/g, c =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+}
+
+function showMsg(text, bad) {
+  const m = $('msg');
+  m.style.display = text ? '' : 'none';
+  m.textContent = text || '';
+  m.className = 'msg' + (bad ? ' bad' : ' good');
+}
+
+// ---------- 模板下拉 ----------
+function fillTemplates() {
+  const sel = $('tpl-select');
+  sel.innerHTML = '<option value="">— 请选择 —</option>';
+  if (!templates.length) {
+    sel.insertAdjacentHTML('beforeend', '<option value="__new__">（没有已注册的模板，请从 PDF 新建）</option>');
+    $('tpl-hint').textContent = '扫描到的位置：' + {{ home | tojson }};
+    return;
+  }
+  templates.forEach(t => {
+    const o = document.createElement('option');
+    o.value = t.path;
+    o.textContent = `${t.id}　${t.pages} 页 / ${t.questions} 题` + (t.has_rois ? '' : '（未标注）');
+    sel.appendChild(o);
+  });
+  if (SAVED.template) sel.value = SAVED.template;
+  onTemplateChange();
+}
+
+async function onTemplateChange() {
+  const v = $('tpl-select').value;
+  if (!v || v === '__new__') { $('tpl-hint').textContent = ''; return; }
+  const d = await (await fetch('/api/validate-template?path=' + encodeURIComponent(v))).json();
+  if (d.ok) {
+    $('tpl-hint').textContent = `可用：${d.pages} 页，${d.questions} 个答案区域。` + (d.reason ? ' ' + d.reason : '');
+    $('tpl-hint').style.color = d.questions ? 'var(--ok)' : 'var(--warn)';
+  } else {
+    $('tpl-hint').textContent = d.reason || '模板不可用';
+    $('tpl-hint').style.color = 'var(--warn)';
+  }
+}
+
+// ---------- 服务端目录浏览器 ----------
+async function openPicker(targetId, mode) {
+  picking = targetId;
+  pickMode = mode || 'dir';
+  $('modal-title').textContent = mode === 'file' ? '选择 PDF 文件' : '选择文件夹';
+  $('modal-pick').textContent = mode === 'file' ? '选择这个文件' : '选择这个文件夹';
+  $('modal').style.display = '';
+  const start = $(targetId).value || SAVED.input_dir || '';
+  await loadDir(start);
+}
+
+async function loadDir(path) {
+  const wantFiles = pickMode === 'file';
+  const d = await (await fetch('/api/browse?path=' + encodeURIComponent(path || '')
+    + (wantFiles ? '&files=1' : ''))).json();
+  // 手动敲进完整 PDF 路径时，别把它悄悄改写成父目录
+  const typed = String(path || '').trim();
+  current = (wantFiles && typed.toLowerCase().endsWith('.pdf') && !d.error)
+    ? typed : (d.path || '');
+  $('modal-input').value = current;
+  $('modal-cur').textContent = d.error ? ('⚠ ' + d.error) : current;
+
+  $('modal-shortcuts').innerHTML =
+    (d.drives || []).map(x => `<button type="button" data-nav="${esc(x.path)}">💽 ${esc(x.name)}</button>`).join('') +
+    (d.shortcuts || []).map(x => `<button type="button" data-nav="${esc(x.path)}">📁 ${esc(x.name)}</button>`).join('');
+
+  const dirs = d.dirs || [], files = d.files || [];
+  let html = d.parent ? `<div class="modal-item up" data-nav="${esc(d.parent)}">📁 ..</div>` : '';
+  html += dirs.map(x =>
+    `<div class="modal-item" data-nav="${esc(x.path)}">
+       <span>📁 ${esc(x.name)}</span>
+       ${x.has_template ? '<span class="badge ok">模板</span>' : ''}
+     </div>`).join('');
+  html += files.map(x =>
+    `<div class="modal-item" data-pick-file="${esc(x.path)}">
+       <span>📄 ${esc(x.name)}</span>
+       <span class="badge muted">${esc(fileSize(x.size))}</span>
+     </div>`).join('');
+  $('modal-list').innerHTML = html ||
+    (wantFiles ? '<div class="hint" style="padding:14px">这里没有 PDF 文件</div>'
+               : '<div class="hint" style="padding:14px">这里没有子文件夹</div>');
+
+  if (!d.error && !dirs.length && !files.length) $('modal-cur').textContent = current + '（空文件夹）';
+}
+
+function fileSize(n) {
+  n = Number(n) || 0;
+  return n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB';
+}
+
+// 选文件夹 / 选文件 共用：把路径写回输入框并关掉弹窗
+function applyPick(raw) {
+  const v = String(raw || '').trim();
+  if (!v) { showMsg('还没选任何东西。', true); return; }
+  if (pickMode === 'file' && !v.toLowerCase().endsWith('.pdf')) {
+    showMsg('请选择 PDF 文件。', true); return;
+  }
+  $(picking).value = v;
+  $('modal').style.display = 'none';
+  showMsg('');
+  if (picking === 'input-dir') checkInput();
+  if (picking === 'new-pdf') $('create-msg').textContent = '';
+}
+
+document.addEventListener('click', (e) => {
+  const pf = e.target.closest('[data-pick-file]');
+  if (pf) { applyPick(pf.dataset.pickFile); return; }
+  const nav = e.target.closest('[data-nav]');
+  if (nav) { loadDir(nav.dataset.nav); return; }
+  const pk = e.target.closest('[data-pick]');
+  if (pk) { openPicker(pk.dataset.pick, pk.dataset.mode); }
+});
+
+$('modal-go').addEventListener('click', () => loadDir($('modal-input').value));
+$('modal-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') loadDir($('modal-input').value); });
+$('modal-close').addEventListener('click', () => { $('modal').style.display = 'none'; });
+$('modal').addEventListener('click', (e) => { if (e.target === $('modal')) $('modal').style.display = 'none'; });
+
+$('modal-pick').addEventListener('click', () => {
+  if (!picking) return;
+  applyPick($('modal-input').value.trim() || current);
+});
+
+async function checkInput() {
+  const p = $('input-dir').value.trim();
+  if (!p) { $('input-msg').textContent = ''; return; }
+  const d = await (await fetch('/api/browse?path=' + encodeURIComponent(p))).json();
+  $('input-msg').textContent = d.error ? ('⚠ ' + d.error) : '✓ 找到 ' + d.dirs.length + ' 个子文件夹';
+  $('input-msg').style.color = d.error ? 'var(--warn)' : 'var(--ok)';
+}
+$('input-dir').addEventListener('blur', checkInput);
+
+// ---------- 新建模板 ----------
+$('btn-create').addEventListener('click', async () => {
+  const pdf = $('new-pdf').value.trim();
+  if (!pdf) { $('create-msg').textContent = '先选一个空白模板 PDF。'; $('create-msg').style.color = 'var(--warn)'; return; }
+  $('btn-create').disabled = true;
+  $('create-msg').textContent = '正在创建…';
+  const d = await (await fetch('/api/create-template', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pdf, dpi: Number($('new-dpi').value) })
+  })).json();
+  $('btn-create').disabled = false;
+  if (!d.ok) { $('create-msg').textContent = d.message; $('create-msg').style.color = 'var(--warn)'; return; }
+  $('create-msg').textContent = d.message;
+  $('create-msg').style.color = 'var(--ok)';
+  templates = await (await fetch('/api/templates')).json();
+  fillTemplates();
+  $('tpl-select').value = d.path;
+  onTemplateChange();
+});
+
+// ---------- 完成 ----------
+$('btn-finish').addEventListener('click', async () => {
+  const body = {
+    template: $('tpl-select').value,
+    input: $('input-dir').value.trim(),
+    output: $('output-dir').value.trim(),
+  };
+  if (!body.template || body.template === '__new__') { showMsg('第 1 步：还没选模板。', true); return; }
+  if (!body.input) { showMsg('第 2 步：还没选学生作业文件夹。', true); return; }
+
+  $('btn-finish').disabled = true;
+  $('finish-msg').textContent = '正在检查…';
+  const r = await fetch('/api/setup', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+  });
+  const d = await r.json();
+  $('btn-finish').disabled = false;
+  if (!d.ok) { showMsg(d.message || '设置失败', true); $('finish-msg').textContent = ''; return; }
+  $('finish-msg').textContent = '正在进入…';
+  location.href = '/';
+});
+
+$('tpl-select').addEventListener('change', onTemplateChange);
+fillTemplates();
+</script>
+</body>
+</html>

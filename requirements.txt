@@ -1,0 +1,13 @@
+# 直接 pip install -r requirements.txt 即可。
+# 只想跑"快速验证"的话，至少需要 rapid + onnxruntime。
+
+PyMuPDF>=1.24
+opencv-python>=4.9
+numpy>=1.24
+Pillow>=10.0
+PyYAML>=6.0
+typer>=0.12
+
+# OCR 后端（默认：RapidOCR + ONNXRuntime，跨平台、无 PaddlePaddle 依赖）
+rapidocr>=3.9
+onnxruntime>=1.18

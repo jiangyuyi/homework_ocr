@@ -1,0 +1,49 @@
+{
+  "template_id": "demo_yuwen",
+  "version": 1,
+  "dpi": 300,
+  "pdf": "template.pdf",
+  "notes": "make-demo 自动生成的自测模板",
+  "pages": [
+    {
+      "page": 1,
+      "width": 2479,
+      "height": 3508,
+      "questions": [
+        {
+          "id": "1",
+          "answer_area": [
+            60,
+            215,
+            2419,
+            335
+          ],
+          "type": "text",
+          "expected_lines": 1
+        },
+        {
+          "id": "2",
+          "answer_area": [
+            60,
+            475,
+            2419,
+            665
+          ],
+          "type": "text",
+          "expected_lines": 3
+        },
+        {
+          "id": "3",
+          "answer_area": [
+            60,
+            755,
+            2419,
+            1015
+          ],
+          "type": "text",
+          "expected_lines": 3
+        }
+      ]
+    }
+  ]
+}

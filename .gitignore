@@ -1,0 +1,38 @@
+# 忽略模型权重（用 `homework-ocr fetch-models` 重新下载）
+models/
+*.onnx
+
+# 运行产物
+output/
+demo/output/
+demo/out_*/
+demo/input/
+demo/识别结果/
+demo/_preview_*.png
+demo/_annotate_render.png
+*.xlsx
+!demo/.gitkeep
+
+# 合成自测数据：体积大且可用 `homework-ocr make-demo` 随时重新生成，
+# 不值得塞进 git 历史（单个模板 PDF 就有 25MB）
+demo/template/*.pdf
+demo/template/pages/
+
+# 启动脚本的失败日志（启动.bat 写的）
+启动错误.log
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
